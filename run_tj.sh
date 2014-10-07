@@ -77,7 +77,7 @@ for host in $hosts
 do
 	sleep $timeout
 	echo "Running on $host"
-	ssh $host "/home/xinlu/tj/$exe" 
+	ssh $host "$PWD/$exe" 
 done
 
 # run feed file
