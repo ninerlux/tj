@@ -16,7 +16,7 @@ DN_Queue READ_QUEUE_BY_T[MAX_TAG];
 DN_Queue WRITE_QUEUE_BY_DEST[MAX_NODES];
 
 
-const char *conf = "/home/xinlu/tj/conf";
+const char *conf = "/home/ajk2214/cs6901/tj/conf";
 const char *domain = ".clic.cs.columbia.edu";
 const size_t tags = 3;
 
@@ -184,7 +184,11 @@ void init(int node_nr) {
 
 int main(int argc, char** argv) {
     //set up connections
+    printf("Setup\n");
+    fflush(stdout);
     conn = setup(conf, domain, tags, 255);
+    printf("Finished setup\n");
+    fflush(stdout);
     assert(conn != NULL);
     size_t h = 0;
     size_t t = 0;
@@ -199,8 +203,11 @@ int main(int argc, char** argv) {
     }
     size_t hosts = h;
     int server = conn[h + 1][0];
-
+printf("Init hosts\n");
+fflush(stdout);
     init(hosts);
+printf("Finished init hosts\n");
+fflush(stdout);
 
     /* spawn N * T * 2 connection threads
      * N: node number

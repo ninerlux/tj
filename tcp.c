@@ -255,6 +255,8 @@ int **tcp_grid_tags(char **hostnames, int *ports,
               int hosts, int tags, const char *domain)
 {
     int h, t, server = -1, **conn = NULL;
+    printf("In tcp_grid_tags\n");
+    fflush(stdout);
     if (conn != NULL) {
         error:
         if (server >= 0)
@@ -273,12 +275,20 @@ int **tcp_grid_tags(char **hostnames, int *ports,
         fprintf(stderr, "???: Cannot get hostname from OS\n");
         goto error;
     }
+    printf("Got hostname\n");
+    fflush(stdout);
+
     // check that domain fits
     for (h = 0 ; h != hosts ; ++h)
         if (strlen(hostnames[h]) + strlen(domain) >= NI_MAXHOST) {
             fprintf(stderr, "%s: Possibly invalid domain\n", hostname);
             goto error;
         }
+    
+    printf("Domain OK\n");
+    fflush(stdout);
+
+
     // find host in file
     for (h = 0 ; h != hosts ; ++h)
         if (!strcmp(hostnames[h], hostname)) break;
@@ -287,6 +297,12 @@ int **tcp_grid_tags(char **hostnames, int *ports,
         fprintf(stderr, "%s: Cannot find hostname in hosts\n", hostname);
         goto error;
     }
+
+ 
+    printf("Hostname in hosts OK\n");
+    fflush(stdout);
+
+
     // open server if not last
     server = tcp_server(ports[local_host]);
     if (server < 0) {
@@ -296,8 +312,11 @@ int **tcp_grid_tags(char **hostnames, int *ports,
     }
     // allocate connection array
 
+    printf("Node opened servers\n");
+    fflush(stdout);
+
     conn = new int *[hosts + 2];
-    for (h = 0; h != hosts ; ++h) {
+    for (h = 0; h <= hosts + 1; ++h) {
         conn[h] = new int[tags + 1];
     }
 
@@ -306,18 +325,28 @@ int **tcp_grid_tags(char **hostnames, int *ports,
             conn[h][t] = -1;
         }
     }
+
+    printf("About to connect to previous nodes\n");
+    fflush(stdout);
+
+
     // connect to all previous nodes
     int timeout = -1;
     for (h = 0 ; h != local_host ; ++h) {
         for (t = 0; t != tags; ++t) {
             conn[h][t] = tcp_connect(hostnames[h], ports[h], timeout);
-            if (conn[h] < 0) {
+            if (conn[h][t] < 0) {
                 fprintf(stderr, "%s: Node %d cannot connect to node %d (errno: %d)\n",
                         hostnames[local_host], local_host, h, errno);
                 goto error;
             }
         }
     }
+
+    printf("Waiting for connections to me\n");
+    fflush(stdout);
+
+
     // wait for all next nodes to connect to you
     int hosts_after = hosts - local_host - 1;
     while (hosts_after--) {
@@ -349,6 +378,10 @@ int **tcp_grid_tags(char **hostnames, int *ports,
     }
 
     conn[hosts + 1][0] = server;
+ 
+    printf("Returning from tcp_grid_tags\n");
+    fflush(stdout);
+
 
     return conn;
 }
