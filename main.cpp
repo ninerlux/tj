@@ -16,7 +16,7 @@ DN_Queue READ_QUEUE_BY_T[MAX_TAG];
 DN_Queue WRITE_QUEUE_BY_DEST[MAX_NODES];
 
 
-const char *conf = "/home/ajk2214/cs6901/tj/conf";
+const char *conf = "/home/xinlu/tj/conf";
 const char *domain = ".clic.cs.columbia.edu";
 const size_t tags = 3;
 
@@ -194,18 +194,35 @@ int main(int argc, char** argv) {
     size_t t = 0;
     while (conn[h] != NULL) {
         for (t = 0; t < tags && conn[h][t] >= 0; t++);
-        if (t == tags) h++;
+        if (t == tags) {
+	    h++;
+	} else {
+	    break;
+	}
     }
     size_t local_host = h++;
+    printf("local host = %lu\n", local_host);
     while (conn[h] != NULL) {
         for (t = 0; t < tags && conn[h][t] >= 0; t++);
-        if (t == tags) h++;
+        if (t == tags) {
+	    h++;
+	} else {
+	    break;
+	}
     }
     size_t hosts = h;
+    printf("hosts = %lu\n", hosts);
     int server = conn[h + 1][0];
+    printf("server = %d\n", server);
 printf("Init hosts\n");
 fflush(stdout);
-    init(hosts);
+    //init(hosts);
+	for (h = 0; h <= hosts + 1 ; h++) {
+		for (t = 0; t < tags; t++) {
+			printf("%d ", conn[h][t]);
+		} 
+		printf("\n");
+	}
 printf("Finished init hosts\n");
 fflush(stdout);
 
