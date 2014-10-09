@@ -214,17 +214,19 @@ int main(int argc, char** argv) {
     printf("hosts = %lu\n", hosts);
     int server = conn[h + 1][0];
     printf("server = %d\n", server);
-printf("Init hosts\n");
-fflush(stdout);
-    //init(hosts);
-	for (h = 0; h <= hosts + 1 ; h++) {
-		for (t = 0; t < tags; t++) {
-			printf("%d ", conn[h][t]);
-		} 
-		printf("\n");
-	}
-printf("Finished init hosts\n");
-fflush(stdout);
+    //print out the connection matrix
+    for (h = 0; h <= hosts + 1 ; h++) {
+	for (t = 0; t < tags; t++) {
+	    printf("%d ", conn[h][t]);
+	} 
+	printf("\n");
+    }
+
+    printf("Init hosts\n");
+    fflush(stdout);
+    init(hosts);
+    printf("Finished init hosts\n");
+    fflush(stdout);
 
     /* spawn N * T * 2 connection threads
      * N: node number

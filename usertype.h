@@ -7,7 +7,7 @@
 
 #define BLOCK_SIZE 4096
 #define BUFFER_SIZE 4096 //set BUFFER_SIZE equal to BLOCK_SIZE to read one block of data each time
-#define AVAL_BLOCKS 10
+#define AVAL_BLOCKS 10000 //total number of available blocks in BLOCKPTRS
 
 struct DataNode {
     DataNode() {
@@ -52,6 +52,7 @@ typedef struct DataNode_Queue {
     bool empty;
 }DN_Queue;
 
+//parameters to pass to each thread
 struct thr_param {
     int host;
     int tag;
