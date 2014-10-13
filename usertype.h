@@ -13,50 +13,6 @@
 
 using namespace std;
 
-//struct DataNode {
-//    DataNode() {
-//        src = dst = tag = -1;
-//        size = 0;
-//        data = NULL;
-//        next = NULL;
-//        prev = NULL;
-//    };
-//
-//    DataNode(size_t s) : size(s) {
-//        src = dst = tag = -1;
-//        data = (void *)malloc(size);
-//        next = NULL;
-//        prev = NULL;
-//    }
-//
-//    int src;
-//    int dst;
-//    int tag;
-//    size_t size;
-//    void *data;
-//    DataNode *next;
-//    DataNode *prev;
-//};
-//
-//typedef struct DataNode_Queue {
-//    DataNode_Queue() {
-//        head = tail = NULL;
-//        size_remain = 0;
-//        pthread_mutex_init(&mutex, NULL);
-//        pthread_cond_init(&cond, NULL);
-//        processing = false;
-//    }
-//
-//    DataNode *head;
-//    DataNode *tail;
-//    size_t size_remain;
-//    pthread_mutex_t mutex;
-//    pthread_cond_t cond;
-//    bool processing;
-//    bool empty;
-//}DN_Queue;
-
-
 struct DataBlock {
     DataBlock() {
         data = NULL;
@@ -118,10 +74,10 @@ struct msg {
 
 //parameters to pass to each thread
 struct thr_param {
-    int host;
+    int node;       // either source or destination node (depending on direction)
     int tag;
     int conn_type;       //0: read; 1: write
-    int conn;
+    int conn;            //connection file descriptor
 };
 
 

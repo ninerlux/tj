@@ -7,8 +7,11 @@ extern void error(const char *msg);
 
 extern List ***free_list, ***full_list;
 extern HashList ***busy_list;
+extern int localhost;
 
 using namespace std;
+
+//------------------  functions called by worker threads ----------------------
 
 // Called by a worker thread when it wants to process received blocks
 // Returns 0 if no data available
@@ -27,6 +30,9 @@ int send_begin(DataBlock *db, int dest, int tag);
 // Called by a worker thread when it is done filling a to-be-sent block
 void send_end(DataBlock db, int dest, int tag);
 
+//------------------- functions called by connection threads -------------------
+void *readFromSocket(void *param);
 
+void *writeToSocket(void *param);
 
 #endif

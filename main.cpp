@@ -8,6 +8,7 @@
 
 #include "tcp.h"
 #include "usertype.h"
+#include "ConnThread.h"
 
 using namespace std;
 
@@ -21,6 +22,10 @@ const char *domain = ".clic.cs.columbia.edu";
 const int tags = 3;
 const int conn_type = 2; //two types of connection. 0: read; 1: write.
 
+int localhost;
+int hosts;
+int server;
+
 int **conn;
 pthread_t ***conn_threads;
 pthread_t *worker_threads;
@@ -29,53 +34,12 @@ List ***free_list, ***full_list;
 HashList ***busy_list;
 
 
-void error(const char *msg) {
-    perror(msg);
+void error(const char *info) {
+    perror(info);
     exit(1);
 }
 
 
-
-void *readFromSocket(void *param) {
-//    thr_param *p = (thr_param *)param;
-//    int src = p->host;
-//    int tag = p->tag;
-//    int conn_fd = p->conn;
-//    char *buffer;
-//
-//    int n;
-//
-//    while (true) {
-//        buffer = new char[BUFFER_SIZE];
-//        bzero(buffer, BUFFER_SIZE);
-//        n = read(conn_fd, buffer, BUFFER_SIZE);
-//        if (n < 0) {
-//            error("ERROR reading from socket");
-//        }
-//
-//        recv_enqueue(buffer, tag);
-//    }
-}
-
-
-void *writeToSocket(void *param) {
-//    thr_param *p = (thr_param *)param;
-//    int dest = p->host;
-//    int tag = p->tag;
-//    int conn_fd = p->conn;
-//    char *buffer;
-//
-//    pthread_mutex_lock(&WRITE_QUEUE_BY_DEST[dest].mutex);
-//    //If WRITE_QUEUE_BY_DEST[dest] contains something to write, wake up this thread
-//    while (WRITE_QUEUE_BY_DEST[dest].empty) {
-//        pthread_cond_wait(&WRITE_QUEUE_BY_DEST[dest].cond, &WRITE_QUEUE_BY_DEST[dest].mutex);
-//    }
-//    while (WRITE_QUEUE_BY_DEST[dest].head->next != WRITE_QUEUE_BY_DEST[dest].tail) {
-//        buffer = (char *)WRITE_QUEUE_BY_DEST[dest].head->next->data;
-//        //TODO: ACTUALLY SEND IT -- blocking
-//        //TODO: return DataNode to BLOCKPTRS
-//    }
-}
 
 //void *worker() {
 //    void *input_block;
@@ -165,8 +129,13 @@ int main(int argc, char** argv) {
 	    break;
 	}
     }
-    int local_host = h++;
+    local_host = h++;
     printf("local host = %d\n", local_host);
+    //temporary change-----
+    for (t = 0; t < tags; t++) {
+        conn[localhost][t] = -2;
+    }
+    //---------------------
     while (conn[h] != NULL) {
         for (t = 0; t < tags && conn[h][t] >= 0; t++);
         if (t == tags) {
@@ -175,9 +144,9 @@ int main(int argc, char** argv) {
 	    break;
 	}
     }
-    int hosts = h;
+    hosts = h;
     printf("hosts = %d\n", hosts);
-    int server = conn[h + 1][0];
+    server = conn[h + 1][0];
     printf("server = %d\n", server);
     //print out the connection matrix
     for (h = 0; h <= hosts + 1 ; h++) {
@@ -193,26 +162,34 @@ int main(int argc, char** argv) {
     printf("Finished init hosts\n");
     fflush(stdout);
 
-    /* spawn N * T * 2 connection threads
+    /* spawn N * T * 2 connection threads (including connections to itself)
      * N: node number
      * T: tag number
      * 2: read / write - 0: read connection, 1: write connection
+     * We differentiate connection to other nodes with those to itself in
+     * functions readFromSocket and writeToSocket
      */
-//    int k = 0;
-//    conn_threads = new pthread_t **[hosts];
-//    for (h = 0; h < hosts; h++) {
-//        conn_threads[h] = new pthread_t *[tags];
-//        for (t = 0; t < tags; t++) {
-//            conn_threads[h][t] = new pthread_t[2];
-//            thr_param *param = new thr_param();
-//            param->host = h;
-//            param->tag = t;
-//            param->conn = conn[h][t];
-//            pthread_create(&conn_threads[h][t][0], NULL, readFromSocket, (void *)param);
-//            pthread_create(&conn_threads[h][t][1], NULL, writeToSocket, (void *)param);
-//
-//        }
-//    }
+    conn_threads = new pthread_t **[hosts];
+    for (h = 0; h < hosts; h++) {
+        conn_threads[h] = new pthread_t *[tags];
+        for (t = 0; t < tags; t++) {
+            conn_threads[h][t] = new pthread_t[2];
+            thr_param *param = new thr_param();
+            param->node = h;
+            param->tag = t;
+            param->conn = conn[h][t];
+            param->conn_type = 0;
+            pthread_create(&conn_threads[h][t][0], NULL, readFromSocket, (void *)param);
+            param = new thr_param();
+            param->node = h;
+            param->tag = t;
+            param->conn = conn[h][t];
+            param->conn_type = 1;
+            pthread_create(&conn_threads[h][t][1], NULL, writeToSocket, (void *)param);
+        }
+    }
+
+
 //    /* spawn T worker threads
 //     * T: tag number
 //     */
