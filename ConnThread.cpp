@@ -1,5 +1,7 @@
 #include "ConnThread.h"
 #include <unistd.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 // Called by a worker thread when it wants to process received blocks
 // Returns 0 if no data available

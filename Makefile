@@ -1,5 +1,5 @@
-CC = g++-4.9
-CFLAGS = -Wall -g -std=c++0x
+CC = g++
+CFLAGS = -pthread -Wall -g -std=c++0x
 
 tj : main.o tcp.o usertype.o WorkerThread.o ConnThread.o
 	${CC} ${CFLAGS} ConnThread.o WorkerThread.o tcp.o usertype.o main.o -o tj
