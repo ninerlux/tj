@@ -62,6 +62,10 @@ private:
 };
 
 struct HashList {
+    HashList() {
+        pthread_mutex_init(&mutex, NULL);
+    }
+
     //the hash list contains pointers to data blocks
     //HashList is the data structure of 'busy' list
     //It is used to record history of data blocks sent to worker thread to process

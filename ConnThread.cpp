@@ -102,6 +102,8 @@ void recv_end(DataBlock db, int src, int tag) {
 // Returns 0 if ‘free’ is empty
 // Returns 1 if data block is available
 int send_begin(DataBlock *db, int dest, int tag) {
+    printf("Successfully started send_begin\n");
+
     //lock ‘free’ send list for the given dest and tag
     pthread_mutex_lock(&free_list[tag][1][dest].mutex);
     if (free_list[tag][1][dest].getNum() == 0) {
@@ -126,6 +128,8 @@ int send_begin(DataBlock *db, int dest, int tag) {
     busy_list[tag][1][dest].list[db->data] = node;
     //unlock the 'busy' send list
     pthread_mutex_unlock(&busy_list[tag][1][dest].mutex);
+
+    printf("Successfully finished send_begin\n");
 
     return 1;
 }
@@ -177,12 +181,12 @@ void *readFromSocket(void *param) {
             pthread_mutex_lock(&full_list[tag][1][local_host].mutex);
             //pull the 1st node from the 'full' send list
             node = full_list[tag][1][local_host].removeHead();
+            pthread_mutex_unlock(&full_list[tag][1][local_host].mutex);
+
             if (node == NULL) {
-                printf("readFromSocket: pull node from list fail: tag %d, local\n", tag);
-                pthread_exit(NULL);
+                continue;
             }
             //unlock the 'full' send list
-            pthread_mutex_unlock(&full_list[tag][1][local_host].mutex);
 
             //lock the 'full' receive list
             pthread_mutex_lock(&full_list[tag][0][local_host].mutex);
@@ -200,13 +204,13 @@ void *readFromSocket(void *param) {
                 pthread_mutex_lock(&free_list[tag][0][src].mutex);
                 //pull the 1st list node from the 'free' receive list
                 node = free_list[tag][0][src].removeHead();
+                pthread_mutex_unlock(&free_list[tag][0][src].mutex);
+
                 if (node == NULL) {
-                    printf("readFromSocket: pull node from list fail: tag %d, src %d\n", tag, src);
-                    pthread_exit(NULL);
+                    continue;
                 }
                 space_remain_in_cur_node = BLOCK_SIZE;
                 //unlock the 'free' receive list
-                pthread_mutex_unlock(&free_list[tag][0][src].mutex);
             }
             //read from socket() in that list node
             size_t n;
@@ -255,12 +259,12 @@ void *writeToSocket(void *param) {
             pthread_mutex_lock(&full_list[tag][0][local_host].mutex);
             //pull the 1st node from the ‘full’ receive list
             node = full_list[tag][0][local_host].removeHead();
-            if (node == NULL) {
-                printf("writeToSocket: pull node from list fail: tag %d, local\n", tag);
-                pthread_exit(NULL);
-            }
-            //unlock ‘full’ receive list
             pthread_mutex_unlock(&full_list[tag][0][local_host].mutex);
+
+            if (node == NULL) {
+                continue;
+            } 
+            //unlock ‘full’ receive list
 
             //lock the 'full' send list
             pthread_mutex_lock(&full_list[tag][1][local_host].mutex);
@@ -276,12 +280,13 @@ void *writeToSocket(void *param) {
             pthread_mutex_lock(&full_list[tag][1][dest].mutex);
             //pull the 1st node from the ‘full’ send list
             node = full_list[tag][1][dest].removeHead();
-            if (node == NULL) {
-                printf("writeToSocket: pull node from list fail: tag %d, dest %d\n", tag, dest);
-                pthread_exit(NULL);
-            }
-            //unlock ‘full’ send list
             pthread_mutex_unlock(&full_list[tag][1][dest].mutex);
+
+            if (node == NULL) {
+                continue;
+            }
+
+            //unlock ‘full’ send list
 
             //write data in that node to socket
             size_t n;

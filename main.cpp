@@ -17,7 +17,7 @@ using namespace std;
 //DN_Queue WRITE_QUEUE_BY_DEST[MAX_NODES];
 
 
-const char *conf = "/home/xinlu/tj/conf";
+const char *conf = "/home/ajk2214/cs6901/tj/conf";
 const char *domain = ".clic.cs.columbia.edu";
 const int tags = 3;
 const int conn_type = 2; //two types of connection. 0: read; 1: write.
@@ -92,7 +92,7 @@ void printListBackward(ListNode *tail) {
 }
 
 void init(int node_nr) {
-    int h, t, p, i;
+    int t, p, n, i;
     free_list = new List **[tags];
     busy_list = new HashList **[tags];
     full_list = new List **[tags];
@@ -105,15 +105,17 @@ void init(int node_nr) {
             busy_list[t][p] = new HashList[node_nr];
             full_list[t][p] = new List[node_nr];
 
-           for (i = 0; i < MAX_BLOCKS_PER_LIST; i++) {
+           for (n = 0; n < node_nr; n++) {
+            for (i = 0; i < MAX_BLOCKS_PER_LIST; i++) {
                struct DataBlock db;
                db.data = malloc(BLOCK_SIZE);
 
                ListNode *node = new ListNode;
                node->db = db;
 
-               free_list[t][p][node_nr].addTail(node);
-           } 
+               free_list[t][p][n].addTail(node);
+            } 
+           }
         }
     }
 
@@ -183,19 +185,21 @@ int main(int argc, char** argv) {
     for (h = 0; h < hosts; h++) {
         conn_threads[h] = new pthread_t *[tags];
         for (t = 0; t < tags; t++) {
+            printf("Creating threads %d %d\n", h, t);
+            fflush(stdout);
             conn_threads[h][t] = new pthread_t[2];
             thr_param *param = new thr_param();
             param->node = h;
             param->tag = t;
             param->conn = conn[h][t];
             param->conn_type = 0;
-            pthread_create(&conn_threads[h][t][0], NULL, readFromSocket, (void *)param);
+            pthread_create(&conn_threads[h][t][0], NULL, &readFromSocket, (void *)param);
             param = new thr_param();
             param->node = h;
             param->tag = t;
             param->conn = conn[h][t];
             param->conn_type = 1;
-            pthread_create(&conn_threads[h][t][1], NULL, writeToSocket, (void *)param);
+            pthread_create(&conn_threads[h][t][1], NULL, &writeToSocket, (void *)param);
         }
     }
 
@@ -207,8 +211,17 @@ int main(int argc, char** argv) {
 //    for (t = 0; t < tags; t++) {
 //        pthread_create(&worker_threads[t], NULL, worker, NULL);
 //    }
+    DataBlock db;
+    int src;
 
+    send_begin(&db, 0, 0);
+    strcpy((char *) db.data, "My test string");
+    db.size = 15;
+    send_end(db, 0, 0);
 
+    recv_begin(&db, &src, hosts, 0);
+    printf("%s OH MY!!\n", (char *) db.data);
+    recv_end(db, src, 0);
 
     return 0;
 }
