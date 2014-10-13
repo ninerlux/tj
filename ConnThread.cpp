@@ -284,7 +284,16 @@ void *writeToSocket(void *param) {
             pthread_mutex_unlock(&full_list[tag][1][dest].mutex);
 
             //write data in that node to socket
-
+            size_t n;
+            n = write(conn_fd, node->db.data, node->db.size);
+            if (n < 0) {
+                printf("writeToSocket: error on writing to dest %d on tag %d\n", dest, tag);
+                pthread_exit(NULL);
+            }
+            if (n != node->db.size) {
+                printf("writeToSocket: error - partial writing to dest %d on tag %d with size %lu\n", dest, tag, n);
+                pthread_exit(NULL);
+            }
 
             //lock the ‘free’ send list
             pthread_mutex_lock(&free_list[tag][1][dest].mutex);
