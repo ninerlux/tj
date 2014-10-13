@@ -9,7 +9,7 @@
 
 #define BLOCK_SIZE 4096
 #define BUFFER_SIZE 4096 //set BUFFER_SIZE equal to BLOCK_SIZE to read one block of data each time
-#define AVAL_BLOCKS 10000 //total number of available blocks in BLOCKPTRS
+#define MAX_BLOCKS_PER_LIST 10  // Number of blocks initially allocated to the free lists
 
 using namespace std;
 

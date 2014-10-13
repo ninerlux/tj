@@ -92,7 +92,7 @@ void printListBackward(ListNode *tail) {
 }
 
 void init(int node_nr) {
-    int h, t, p;
+    int h, t, p, i;
     free_list = new List **[tags];
     busy_list = new HashList **[tags];
     full_list = new List **[tags];
@@ -104,6 +104,16 @@ void init(int node_nr) {
             free_list[t][p] = new List[node_nr];
             busy_list[t][p] = new HashList[node_nr];
             full_list[t][p] = new List[node_nr];
+
+           for (i = 0; i < MAX_BLOCKS_PER_LIST; i++) {
+               struct DataBlock db;
+               db.data = malloc(BLOCK_SIZE);
+
+               ListNode *node = new ListNode;
+               node->db = db;
+
+               free_list[t][p][node_nr].addTail(node);
+           } 
         }
     }
 
