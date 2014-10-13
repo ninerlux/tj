@@ -22,7 +22,7 @@ const char *domain = ".clic.cs.columbia.edu";
 const int tags = 3;
 const int conn_type = 2; //two types of connection. 0: read; 1: write.
 
-int localhost;
+int local_host;
 int hosts;
 int server;
 
@@ -133,7 +133,7 @@ int main(int argc, char** argv) {
     printf("local host = %d\n", local_host);
     //temporary change-----
     for (t = 0; t < tags; t++) {
-        conn[localhost][t] = -2;
+        conn[local_host][t] = -2;
     }
     //---------------------
     while (conn[h] != NULL) {

@@ -7,7 +7,7 @@ extern void error(const char *msg);
 
 extern List ***free_list, ***full_list;
 extern HashList ***busy_list;
-extern int localhost;
+extern int local_host;
 
 using namespace std;
 

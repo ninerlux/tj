@@ -48,15 +48,17 @@ public:
         pthread_mutex_init(&mutex, NULL);
     };
 
+    pthread_mutex_t mutex;
+
     ListNode *removeHead();
     int addTail(ListNode *);
-    int getNum() {return num;}
+    size_t getNum() {return num;}
+
 
 private:
     ListNode *head;
     ListNode *tail;
     size_t num;     // Number of elements on the list
-    pthread_mutex_t mutex;
 };
 
 struct HashList {
