@@ -35,18 +35,24 @@ struct ListNode {
     ListNode *next;
 };
 
-struct List {
+class List {
+public:
     List() {
         head = new ListNode();
-        head->next = tail;
-        head->db.size = -1;
         tail = new ListNode();
+        head->next = tail;
         tail->prev = head;
+        head->db.size = -1;
         tail->db.size = -1;
         num = 0;
         pthread_mutex_init(&mutex, NULL);
     };
 
+    ListNode *removeHead();
+    int addTail(ListNode *);
+    int getNum() {return num;}
+
+private:
     ListNode *head;
     ListNode *tail;
     size_t num;     // Number of elements on the list
