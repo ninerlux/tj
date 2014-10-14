@@ -14,7 +14,7 @@ using namespace std;
 
 const char *conf = "/home/ajk2214/cs6901/tj/conf";
 const char *domain = ".clic.cs.columbia.edu";
-const int tags = 3;
+const int tags = 2;
 const int conn_type = 2; // Two types of connection. 0: read; 1: write.
 
 int local_host;
@@ -34,18 +34,44 @@ void error(const char *info) {
 }
 
 
-//void *worker() {
-//    void *input_block;
-//    void *output_block;
-//
-//    while (true) {
-//        if (recv_dequeue(&input_block, &src, tag)) {
-//
-//        } else {
-//
-//        }
-//    }
-//}
+void *worker(void *param) {
+    thr_param *p = (thr_param *) param;
+    int tag = p->tag;
+    int n;
+    DataBlock db;
+
+    if (tag == 0) {
+        // Send something to each node, followed by a termination message
+        for (n = 0; n < hosts; n++) {
+            while(!send_begin(&db, n, tag+1));
+            strcpy((char *) db.data, "THIS IS MY LARGE TEST STRING");
+            db.size = strlen((const char *) db.data) + 1;
+            send_end(db, n, tag+1);
+
+            while(!send_begin(&db, n, tag+1));
+            strcpy((char *) db.data, "END");
+            db.size = strlen((const char *) db.data) + 1;
+            send_end(db, n, tag+1);
+        }
+    } else if (tag == 1) {
+        // Receive until termination received from all nodes
+        DataBlock db;
+        int src;
+        int t = 0;
+
+        while (t != hosts) {
+            while (!recv_begin(&db, &src, hosts, tag));
+            printf("%d got %s from %d\n", local_host, (char *) db.data, src);
+            fflush(stdout);
+            recv_end(db, src, tag);
+
+            if (strcmp((const char *) db.data, "END") == 0)
+                t++;
+        }
+    }
+
+    return NULL;
+}
 
 int **setup(const char *conf_filename, const char *domain, size_t tags, size_t max_hosts) {
     size_t hosts = 0;
@@ -228,30 +254,20 @@ int main(int argc, char** argv) {
     }
 
 
-//    /* spawn T worker threads
-//     * T: tag number
-//     */
-//    worker_threads = new pthread_t[tags];
-//    for (t = 0; t < tags; t++) {
-//        pthread_create(&worker_threads[t], NULL, worker, NULL);
-//    }
-    DataBlock dbs;
-    DataBlock dbr;
-    int src;
+    /* spawn T worker threads
+     * T: tag number
+     */
+    worker_threads = new pthread_t[tags];
+    for (t = 0; t < tags; t++) {
+        thr_param *param;
+        param = new thr_param();
+        param->tag = t;
+        pthread_create(&worker_threads[t], NULL, &worker, (void *) param);
+    }
 
-    while(!send_begin(&dbs, 0, 0));
-    strcpy((char *) dbs.data, "My test string");
-    dbs.size = 15;
-    send_end(dbs, 0, 0);
-
-    int i;
-    if (local_host == 0) {
-         for (i = 0; i < 10; i++) {
-            while (!recv_begin(&dbr, &src, hosts, 0));
-            printf("%d got %s from %d\n", local_host, (char *) dbr.data, src);
-            fflush(stdout);
-            recv_end(dbr, src, 0);
-         }
+    for (t = 0; t < tags; t++) {
+        void *retval;
+        pthread_join(worker_threads[t], &retval);
     }
 
     return 0;
