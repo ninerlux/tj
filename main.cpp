@@ -192,14 +192,14 @@ int main(int argc, char** argv) {
             param->node = h;
             param->tag = t;
             param->conn = conn[h][t];
-            param->conn_type = 0;
-            pthread_create(&conn_threads[h][t][0], NULL, &readFromSocket, (void *)param);
+            param->conn_type = RECV;
+            pthread_create(&conn_threads[h][t][RECV], NULL, &readFromSocket, (void *)param);
             param = new thr_param();
             param->node = h;
             param->tag = t;
             param->conn = conn[h][t];
-            param->conn_type = 1;
-            pthread_create(&conn_threads[h][t][1], NULL, &writeToSocket, (void *)param);
+            param->conn_type = SEND;
+            pthread_create(&conn_threads[h][t][SEND], NULL, &writeToSocket, (void *)param);
         }
     }
 
@@ -211,17 +211,24 @@ int main(int argc, char** argv) {
 //    for (t = 0; t < tags; t++) {
 //        pthread_create(&worker_threads[t], NULL, worker, NULL);
 //    }
-    DataBlock db;
+    DataBlock dbs;
+    DataBlock dbr;
     int src;
 
-    send_begin(&db, 0, 0);
-    strcpy((char *) db.data, "My test string");
-    db.size = 15;
-    send_end(db, 0, 0);
+    while(!send_begin(&dbs, 0, 0));
+    strcpy((char *) dbs.data, "My test string");
+    dbs.size = 15;
+    send_end(dbs, 0, 0);
 
-    recv_begin(&db, &src, hosts, 0);
-    printf("%s OH MY!!\n", (char *) db.data);
-    recv_end(db, src, 0);
+    int i;
+    if (local_host == 0) {
+         for (i = 0; i < 10; i++) {
+            while (!recv_begin(&dbr, &src, hosts, 0));
+            printf("%d got %s from %d\n", local_host, (char *) dbr.data, src);
+            fflush(stdout);
+            recv_end(dbr, src, 0);
+         }
+    }
 
     return 0;
 }
