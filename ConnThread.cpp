@@ -229,7 +229,10 @@ void *readFromSocket(void *param) {
             n = read(conn_fd, node->db.data, space_remain_in_cur_node);
             //printf("Node %d read >%s< with size %ld from node %d for tag %d\n", local_host, (char *) node->db.data, n, src, tag);
             //fflush(stdout);
- 
+            if (n == 0) {
+               continue;
+            }
+
             if (n < 0) {
                 printf("readFromSocket: error on reading from src %d on tag %d\n", src, tag);
                 pthread_exit(NULL);
@@ -254,6 +257,8 @@ void *readFromSocket(void *param) {
                     printf("readFromSocket: add node to list fail: tag %d, src %d\n", tag, src);
                     pthread_exit(NULL);
                 }
+                printf("Node %d added to tail of %d receive from %d for %ld bytes with %ld left\n", local_host, tag, src, n, space_remain_in_cur_node);
+                fflush(stdout);
                 pthread_mutex_unlock(&full_list[tag][RECV][src].mutex);
             }
         }
