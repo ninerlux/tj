@@ -242,6 +242,8 @@ void *readFromSocket(void *param) {
 
             if (space_remain_in_cur_node == 0) {
                 pull_new_free_node = true;
+            } else {
+                pull_new_free_node = false;
             }
 
             if (pull_new_free_node) { // Current node has been fully filled, next time we need to pull new node
