@@ -8,105 +8,75 @@
 
 #include "tcp.h"
 #include "usertype.h"
+#include "ConnThread.h"
 
 using namespace std;
 
-DN_Queue BLOCKPTRS;
-DN_Queue READ_QUEUE_BY_T[MAX_TAG];
-DN_Queue WRITE_QUEUE_BY_DEST[MAX_NODES];
-
-
-const char *conf = "/home/xinlu/tj/conf";
+const char *conf = "/home/ajk2214/cs6901/tj/conf";
 const char *domain = ".clic.cs.columbia.edu";
-const size_t tags = 3;
+const int tags = 2;
+const int conn_type = 2; // Two types of connection. 0: read; 1: write.
+
+int local_host;
+int hosts;
+int server;
 
 int **conn;
 pthread_t ***conn_threads;
 pthread_t *worker_threads;
 
-void error(const char *msg) {
-    perror(msg);
+List ***free_list, ***full_list;
+HashList ***busy_list;
+
+void error(const char *info) {
+    perror(info);
     exit(1);
 }
 
 
-void recv_enqueue(char *buffer, int tag) {
-    //Grab an empty DataNode from BLOCKPTRS
-    pthread_mutex_lock(&BLOCKPTRS.mutex);
-    while (BLOCKPTRS.processing) {
-        pthread_cond_wait(&BLOCKPTRS.cond, &BLOCKPTRS.mutex);
-    }
-    BLOCKPTRS.processing = true;
-    DataNode *data_ptr = BLOCKPTRS.tail;
-    BLOCKPTRS.tail = BLOCKPTRS.tail->prev;
-    data_ptr->prev = NULL;
-    data_ptr->next = NULL;
-    pthread_mutex_unlock(&BLOCKPTRS.mutex);
-
-    //Acquire READ_QUEUE_BY_T[tag]'s mutex and enqueue the new empty DataNode
-    pthread_mutex_lock(&READ_QUEUE_BY_T[tag].mutex);
-    READ_QUEUE_BY_T[tag].tail->prev->next = data_ptr;
-    data_ptr->prev = READ_QUEUE_BY_T[tag].tail->prev;
-    READ_QUEUE_BY_T[tag].tail->prev = data_ptr;
-    data_ptr->next = READ_QUEUE_BY_T[tag].tail;
-    //fill in data
-    data_ptr->data = (void *)buffer;
-    pthread_mutex_unlock(&READ_QUEUE_BY_T[tag].mutex);
-}
-
-void *readFromSocket(void *param) {
-    thr_param *p = (thr_param *)param;
-    int src = p->host;
+void *worker(void *param) {
+    thr_param *p = (thr_param *) param;
     int tag = p->tag;
-    int conn_fd = p->conn;
-    char *buffer;
-
+    int m;
     int n;
+    DataBlock db;
 
-    while (true) {
-        buffer = new char[BUFFER_SIZE];
-        bzero(buffer, BUFFER_SIZE);
-        n = read(conn_fd, buffer, BUFFER_SIZE);
-        if (n < 0) {
-            error("ERROR reading from socket");
+    if (tag == 0) {
+        // Send something to each node, followed by a termination message
+        for (n = 0; n < hosts; n++) {
+            for (m = 0; m < 100; m++) {
+                while(!send_begin(&db, n, tag+1));
+                sprintf((char *) db.data, "Test message %d from %d", m, local_host);
+                db.size = strlen((const char *) db.data) + 1;
+                send_end(db, n, tag+1);
+            }
+
+            while(!send_begin(&db, n, tag+1));
+            db.size = 0;
+            send_end(db, n, tag+1);
         }
+    } else if (tag == 1) {
+        // Receive until termination received from all nodes
+        DataBlock db;
+        int src;
+        int t = 0;
 
-        recv_enqueue(buffer, tag);
+        while (t != hosts) {
+            while (!recv_begin(&db, &src, hosts, tag));
+
+            if (db.size > 0) {
+                printf("Node %d received \"%s\" %p from node %d\n", local_host, (char *) db.data, db.data, src);
+                fflush(stdout);
+            } else {
+                t++;
+            }
+
+            recv_end(db, src, tag);
+        }
     }
+
+    return NULL;
 }
-
-
-void *writeToSocket(void *param) {
-    thr_param *p = (thr_param *)param;
-    int dest = p->host;
-    int tag = p->tag;
-    int conn_fd = p->conn;
-    char *buffer;
-
-    pthread_mutex_lock(&WRITE_QUEUE_BY_DEST[dest].mutex);
-    //If WRITE_QUEUE_BY_DEST[dest] contains something to write, wake up this thread
-    while (WRITE_QUEUE_BY_DEST[dest].empty) {
-        pthread_cond_wait(&WRITE_QUEUE_BY_DEST[dest].cond, &WRITE_QUEUE_BY_DEST[dest].mutex);
-    }
-    while (WRITE_QUEUE_BY_DEST[dest].head->next != WRITE_QUEUE_BY_DEST[dest].tail) {
-        buffer = (char *)WRITE_QUEUE_BY_DEST[dest].head->next->data;
-        //TODO: ACTUALLY SEND IT -- blocking
-        //TODO: return DataNode to BLOCKPTRS
-    }
-}
-
-//void *worker() {
-//    void *input_block;
-//    void *output_block;
-//
-//    while (true) {
-//        if (recv_dequeue(&input_block, &src, tag)) {
-//
-//        } else {
-//
-//        }
-//    }
-//}
 
 int **setup(const char *conf_filename, const char *domain, size_t tags, size_t max_hosts) {
     size_t hosts = 0;
@@ -114,123 +84,196 @@ int **setup(const char *conf_filename, const char *domain, size_t tags, size_t m
     char *hostnames[max_hosts];
     char hostname_and_port[max_hosts];
     FILE *fp = fopen(conf_filename, "r");
-    if (fp == NULL) return NULL;
+
+    if (fp == NULL)
+        return NULL;
+
     while (fgets(hostname_and_port, sizeof(hostname_and_port), fp) != NULL) {
         size_t len = strlen(hostname_and_port);
-        if (hostname_and_port[len - 1] != '\n') return NULL;
+
+        if (hostname_and_port[len - 1] != '\n')
+            return NULL;
+
         for (len = 0; !isspace(hostname_and_port[len]); len++);
+
         hostname_and_port[len] = 0;
         hostnames[hosts] = strdup(hostname_and_port);
         ports[hosts] = atoi(&hostname_and_port[len + 1]);
         assert(ports[hosts] > 0);
-        if (++hosts == max_hosts) break;
+
+        if (++hosts == max_hosts)
+            break;
     }
+
     fclose(fp);
+
     return tcp_grid_tags(hostnames, ports, hosts, tags, domain);
 }
 
-void printListForward(DataNode *head) {
+void printListForward(ListNode *head) {
     while (head != NULL) {
-        printf("%d ", head->tag);
+        printf("%lu ", head->db.size);
         head = head->next;
     }
     printf("\n");
 }
 
-void printListBackward(DataNode *tail) {
+void printListBackward(ListNode *tail) {
     while (tail != NULL) {
-        printf("%d ", tail->tag);
+        printf("%lu ", tail->db.size);
         tail = tail->prev;
     }
     printf("\n");
 }
 
 void init(int node_nr) {
-    /* init BLOCKPTRS */
-    BLOCKPTRS.head = new DataNode();
-    BLOCKPTRS.tail = new DataNode();
-    BLOCKPTRS.head->next = BLOCKPTRS.tail;
-    BLOCKPTRS.tail->prev = BLOCKPTRS.head;
-    DataNode *block;
-    for (int i = 0; i < AVAL_BLOCKS; i++) {
-        block = new DataNode(BLOCK_SIZE);
-        block->tag = i;
-        block->next = BLOCKPTRS.head->next;
-        BLOCKPTRS.head->next->prev = block;
-        BLOCKPTRS.head->next = block;
-        block->prev = BLOCKPTRS.head;
-    }
-    //printListForward(BLOCKPTRS.head);
-    //printListBackward(BLOCKPTRS.tail);
-    //printf("head = %d ", (BLOCKPTRS.head)->tag);
-    //printf("tail = %d ", BLOCKPTRS.tail->tag);
+    int t, p, n, i;
 
-    /* init READ_QUEUE_BY_T */
-    for (int t = 0; t < tags; t++) {
-        READ_QUEUE_BY_T[t].head = new DataNode();
-        READ_QUEUE_BY_T[t].tail = new DataNode();
-        READ_QUEUE_BY_T[t].head->next = READ_QUEUE_BY_T[t].tail;
-        READ_QUEUE_BY_T[t].tail->prev = READ_QUEUE_BY_T[t].head;
-    }
-    /* init WRITE_QUEUE_BY_DEST */
-    for (int h = 0; h < node_nr; h++) {
-        WRITE_QUEUE_BY_DEST[h].head = new DataNode();
-        WRITE_QUEUE_BY_DEST[h].tail = new DataNode();
-        WRITE_QUEUE_BY_DEST[h].head->next = WRITE_QUEUE_BY_DEST[h].tail;
-        WRITE_QUEUE_BY_DEST[h].tail->prev = WRITE_QUEUE_BY_DEST[h].head;
-    }
+    free_list = new List **[tags];
+    busy_list = new HashList **[tags];
+    full_list = new List **[tags];
 
+    for (t = 0; t < tags; t++) {
+        free_list[t] = new List *[conn_type];
+        busy_list[t] = new HashList *[conn_type];
+        full_list[t] = new List *[conn_type];
+
+        for (p = 0; p < conn_type; p++) {
+            free_list[t][p] = new List[node_nr];
+            busy_list[t][p] = new HashList[node_nr];
+            full_list[t][p] = new List[node_nr];
+
+            for (n = 0; n < node_nr; n++) {
+                for (i = 0; i < MAX_BLOCKS_PER_LIST; i++) {
+                    struct DataBlock db;
+                    db.data = malloc(BLOCK_SIZE);
+
+                    ListNode *node = new ListNode;
+                    node->db = db;
+
+                    free_list[t][p][n].addTail(node);
+                } 
+            }
+        }
+    }
 }
 
 int main(int argc, char** argv) {
-    //set up connections
+    // Set up connections
+    printf("Setup\n");
+    fflush(stdout);
+
     conn = setup(conf, domain, tags, 255);
+
+    printf("Finished setup\n");
+    fflush(stdout);
+
     assert(conn != NULL);
-    size_t h = 0;
-    size_t t = 0;
+    int h = 0;
+    int t = 0;
+
     while (conn[h] != NULL) {
         for (t = 0; t < tags && conn[h][t] >= 0; t++);
-        if (t == tags) h++;
+
+        if (t == tags) {
+	        h++;
+	    } else {
+	        break;
+	    }
     }
-    size_t local_host = h++;
+
+    local_host = h++;
+    printf("local host = %d\n", local_host);
+    
+    // Not sure what the purposes of the next two blocks are
+    //temporary change-----
+    for (t = 0; t < tags; t++) {
+        conn[local_host][t] = -2;
+    }
+    //---------------------
+    
     while (conn[h] != NULL) {
         for (t = 0; t < tags && conn[h][t] >= 0; t++);
-        if (t == tags) h++;
+
+        if (t == tags) {
+	        h++;
+    	} else {
+	        break;
+    	}
     }
-    size_t hosts = h;
-    int server = conn[h + 1][0];
+
+    hosts = h;
+    printf("hosts = %d\n", hosts);
+    server = conn[h + 1][0];
+    printf("server = %d\n", server);
+
+    // Print out the connection matrix for debugging
+    for (h = 0; h <= hosts + 1 ; h++) {
+	    for (t = 0; t < tags; t++) {
+	        printf("%d ", conn[h][t]);
+    	} 
+	    printf("\n");
+    }
+
+    printf("Init hosts\n");
+    fflush(stdout);
 
     init(hosts);
 
-    /* spawn N * T * 2 connection threads
+    printf("Finished init hosts\n");
+    fflush(stdout);
+
+    /* spawn N * T * 2 connection threads (including connections to itself)
      * N: node number
      * T: tag number
      * 2: read / write - 0: read connection, 1: write connection
+     * The ConnThread methods differentiate data transfer between a node to
+     * itself and a node to other nodes
      */
-//    int k = 0;
-//    conn_threads = new pthread_t **[hosts];
-//    for (h = 0; h < hosts; h++) {
-//        conn_threads[h] = new pthread_t *[tags];
-//        for (t = 0; t < tags; t++) {
-//            conn_threads[h][t] = new pthread_t[2];
-//            thr_param *param = new thr_param();
-//            param->host = h;
-//            param->tag = t;
-//            param->conn = conn[h][t];
-//            pthread_create(&conn_threads[h][t][0], NULL, readFromSocket, (void *)param);
-//            pthread_create(&conn_threads[h][t][1], NULL, writeToSocket, (void *)param);
-//
-//        }
-//    }
-//    /* spawn T worker threads
-//     * T: tag number
-//     */
-//    worker_threads = new pthread_t[tags];
-//    for (t = 0; t < tags; t++) {
-//        pthread_create(&worker_threads[t], NULL, worker, NULL);
-//    }
+    conn_threads = new pthread_t **[hosts];
+
+    for (h = 0; h < hosts; h++) {
+        conn_threads[h] = new pthread_t *[tags];
+
+        for (t = 0; t < tags; t++) {
+            printf("Creating threads %d %d\n", h, t);
+            fflush(stdout);
+
+            thr_param *param;
+            conn_threads[h][t] = new pthread_t[conn_type];
+
+            param = new thr_param();
+            param->node = h;
+            param->tag = t;
+            param->conn = conn[h][t];
+            param->conn_type = RECV;
+            pthread_create(&conn_threads[h][t][RECV], NULL, &readFromSocket, (void *) param);
+
+            param = new thr_param();
+            param->node = h;
+            param->tag = t;
+            param->conn = conn[h][t];
+            param->conn_type = SEND;
+            pthread_create(&conn_threads[h][t][SEND], NULL, &writeToSocket, (void *) param);
+        }
+    }
 
 
+    /* spawn T worker threads
+     * T: tag number
+     */
+    worker_threads = new pthread_t[tags];
+    for (t = 0; t < tags; t++) {
+        thr_param *param;
+        param = new thr_param();
+        param->tag = t;
+        pthread_create(&worker_threads[t], NULL, &worker, (void *) param);
+    }
+
+    for (t = 0; t < tags; t++) {
+        void *retval;
+        pthread_join(worker_threads[t], &retval);
+    }
 
     return 0;
 }

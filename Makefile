@@ -1,10 +1,19 @@
-CC = g++
-CFLAGS = -Wall -g -std=c++0x
+CC = g++-4.9
+CFLAGS = -pthread -Wall -g -std=c++0x
 
-tj : main.o tcp.o
-	${CC} ${CFLAGS} tcp.o main.o -o tj
+tj : main.o tcp.o usertype.o WorkerThread.o ConnThread.o
+	${CC} ${CFLAGS} ConnThread.o WorkerThread.o tcp.o usertype.o main.o -o tj
 
-tcp.o : tcp.c
+ConnThread.o : ConnThread.h ConnThread.cpp
+	${CC} ${CFLAGS} -c ConnThread.cpp -o ConnThread.o
+
+WorkerThread.o : WorkerThread.h WorkerThread.cpp
+	${CC} ${CFLAGS} -c WorkerThread.cpp -o WorkerThread.o
+
+usertype.o: usertype.h usertype.cpp
+	${CC} ${CFLAGS} -c usertype.cpp -o usertype.o
+
+tcp.o : tcp.h tcp.c
 	${CC} ${CFLAGS} -c tcp.c -o tcp.o
 
 main.o : main.cpp
