@@ -37,20 +37,22 @@ void error(const char *info) {
 void *worker(void *param) {
     thr_param *p = (thr_param *) param;
     int tag = p->tag;
+    int m;
     int n;
     DataBlock db;
 
     if (tag == 0) {
         // Send something to each node, followed by a termination message
         for (n = 0; n < hosts; n++) {
-            while(!send_begin(&db, n, tag+1));
-            strcpy((char *) db.data, "THIS IS MY LARGE TEST STRING");
-            db.size = strlen((const char *) db.data) + 1;
-            send_end(db, n, tag+1);
+            for (m = 0; m < 100; m++) {
+                while(!send_begin(&db, n, tag+1));
+                sprintf((char *) db.data, "Test message %d from %d", m, local_host);
+                db.size = strlen((const char *) db.data) + 1;
+                send_end(db, n, tag+1);
+            }
 
             while(!send_begin(&db, n, tag+1));
-            strcpy((char *) db.data, "END");
-            db.size = strlen((const char *) db.data) + 1;
+            db.size = 0;
             send_end(db, n, tag+1);
         }
     } else if (tag == 1) {
@@ -61,12 +63,15 @@ void *worker(void *param) {
 
         while (t != hosts) {
             while (!recv_begin(&db, &src, hosts, tag));
-            printf("%d got %s from %d\n", local_host, (char *) db.data, src);
-            fflush(stdout);
-            recv_end(db, src, tag);
 
-            if (strcmp((const char *) db.data, "END") == 0)
+            if (db.size > 0) {
+                printf("Node %d received \"%s\" %p from node %d\n", local_host, (char *) db.data, db.data, src);
+                fflush(stdout);
+            } else {
                 t++;
+            }
+
+            recv_end(db, src, tag);
         }
     }
 
