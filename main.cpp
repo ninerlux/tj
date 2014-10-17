@@ -223,7 +223,7 @@ int main(int argc, char** argv) {
     printf("Finished init hosts\n");
     fflush(stdout);
 
-    /* spawn N * T * 2 connection threads (including connections to itself)
+    /* spawn (N-1) * T * 2 connection threads and 1 local transfer thread
      * N: node number
      * T: tag number
      * 2: read / write - 0: read connection, 1: write connection
@@ -233,31 +233,32 @@ int main(int argc, char** argv) {
     conn_threads = new pthread_t **[hosts];
 
     for (h = 0; h < hosts; h++) {
-        conn_threads[h] = new pthread_t *[tags];
+        if (h != local_host) {
+            conn_threads[h] = new pthread_t *[tags];
 
-        for (t = 0; t < tags; t++) {
-            printf("Creating threads %d %d\n", h, t);
-            fflush(stdout);
+            for (t = 0; t < tags; t++) {
+                printf("Creating read/write threads %d %d\n", h, t);
+                fflush(stdout);
 
-            thr_param *param;
-            conn_threads[h][t] = new pthread_t[conn_type];
+                thr_param *param;
+                conn_threads[h][t] = new pthread_t[conn_type];
 
-            param = new thr_param();
-            param->node = h;
-            param->tag = t;
-            param->conn = conn[h][t];
-            param->conn_type = RECV;
-            pthread_create(&conn_threads[h][t][RECV], NULL, &readFromSocket, (void *) param);
+                param = new thr_param();
+                param->node = h;
+                param->tag = t;
+                param->conn = conn[h][t];
+                param->conn_type = RECV;
+                pthread_create(&conn_threads[h][t][RECV], NULL, &readFromSocket, (void *) param);
 
-            param = new thr_param();
-            param->node = h;
-            param->tag = t;
-            param->conn = conn[h][t];
-            param->conn_type = SEND;
-            pthread_create(&conn_threads[h][t][SEND], NULL, &writeToSocket, (void *) param);
+                param = new thr_param();
+                param->node = h;
+                param->tag = t;
+                param->conn = conn[h][t];
+                param->conn_type = SEND;
+                pthread_create(&conn_threads[h][t][SEND], NULL, &writeToSocket, (void *) param);
+            }
         }
     }
-
 
     /* spawn T worker threads
      * T: tag number

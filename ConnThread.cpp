@@ -89,16 +89,32 @@ void recv_end(DataBlock db, int src, int tag) {
     // Unlock the 'busy' receive list
     pthread_mutex_unlock(&busy_list[tag][RECV][src].mutex);
 
-    // Lock the 'free' receive list for the given src and tag
-    pthread_mutex_lock(&free_list[tag][RECV][src].mutex);
+    if (src == local_host) {
+        // Local transfer: immediately recycle the node to the free send list
+        // Lock the 'free' send list for the given src and tag
+        pthread_mutex_lock(&free_list[tag][SEND][src].mutex);
 
-    // Add that list node to the tail of the 'free' receive list
-    if (free_list[tag][RECV][src].addTail(node) == -1) {
-        printf("recv_end: add node to list fail: tag %d, src %d\n", tag, src);
-        exit(-1);
+        // Add that list node to the tail of the 'free' send list
+        if (free_list[tag][SEND][src].addTail(node) == -1) {
+            printf("recv_end: add node to list fail: tag %d, src %d\n", tag, src);
+            exit(-1);
+        }
+
+        // Unlock the 'free' send list for the given src and tag
+        pthread_mutex_unlock(&free_list[tag][SEND][src].mutex);
+    } else {
+        // Lock the 'free' receive list for the given src and tag
+        pthread_mutex_lock(&free_list[tag][RECV][src].mutex);
+
+        // Add that list node to the tail of the 'free' receive list
+        if (free_list[tag][RECV][src].addTail(node) == -1) {
+            printf("recv_end: add node to list fail: tag %d, src %d\n", tag, src);
+            exit(-1);
+        }
+
+        // Unlock the 'free' receive list for the given src and tag
+        pthread_mutex_unlock(&free_list[tag][RECV][src].mutex);
     }
-    // Unlock the 'free' receive list for the given src and tag
-    pthread_mutex_unlock(&free_list[tag][RECV][src].mutex);
 }
 
 
@@ -166,17 +182,32 @@ void send_end(DataBlock db, int dest, int tag) {
     // Copy data block into node (by value, since its just a pointer and size_t)
     node->db = db;
 
-    // Lock the 'full' send list for the given dest and tag
-    pthread_mutex_lock(&full_list[tag][SEND][dest].mutex);
+    if (dest == local_host) {
+        // Local transfer: immediately move the node to the full receive list
+        // Lock the 'full' receive list for the given dest and tag
+        pthread_mutex_lock(&full_list[tag][RECV][dest].mutex);
 
-    // Add that list node to the tail of the 'full' send list
-    if (full_list[tag][SEND][dest].addTail(node) == -1) {
-        printf("send_end: add node to list fail: tag %d, dest %d\n", tag, dest);
-        exit(-1);
+        // Add that list node to the tail of the 'full' receive list
+        if (full_list[tag][RECV][dest].addTail(node) == -1) {
+            printf("send_end: add node to list fail: tag %d, dest %d\n", tag, dest);
+            exit(-1);
+        }
+
+        // Unlock the 'full' receive list for the given dest and tag
+        pthread_mutex_unlock(&full_list[tag][RECV][dest].mutex);
+    } else {
+        // Lock the 'full' send list for the given dest and tag
+        pthread_mutex_lock(&full_list[tag][SEND][dest].mutex);
+
+        // Add that list node to the tail of the 'full' send list
+        if (full_list[tag][SEND][dest].addTail(node) == -1) {
+            printf("send_end: add node to list fail: tag %d, dest %d\n", tag, dest);
+            exit(-1);
+        }
+
+        // Unlock the 'full' send list for the given dest and tag
+        pthread_mutex_unlock(&full_list[tag][SEND][dest].mutex);
     }
-
-    // Unlock the 'full' send list for the given dest and tag
-    pthread_mutex_unlock(&full_list[tag][SEND][dest].mutex);
 }
 
 // Called by the read connection thread
@@ -184,109 +215,62 @@ void send_end(DataBlock db, int dest, int tag) {
 void *readFromSocket(void *param) {
     thr_param *p = (thr_param *) param;
     ListNode *node = NULL;
-    ListNode *nodeSend = NULL;
-    ListNode *nodeRecv = NULL;
     int src = p->node;
     int tag = p->tag;
     int conn_fd = p->conn;
 
     while (true) {
-        if (src == local_host) {
-            // Local data transfer
-            if (nodeRecv == NULL) {
-                // Pull the 1st list node from the 'free' receive list
-                pthread_mutex_lock(&free_list[tag][RECV][local_host].mutex);
-                nodeRecv = free_list[tag][RECV][local_host].removeHead();
-                pthread_mutex_unlock(&free_list[tag][RECV][local_host].mutex);
-            }
+        // Pull the 1st list node from the 'free' receive list
+        pthread_mutex_lock(&free_list[tag][RECV][src].mutex);
+        node = free_list[tag][RECV][src].removeHead();
+        pthread_mutex_unlock(&free_list[tag][RECV][src].mutex);
 
-            if (nodeRecv == NULL) {
-                continue;
-            }
-
-            // Pull the 1st node from the 'full' send list
-            pthread_mutex_lock(&full_list[tag][SEND][local_host].mutex);
-            nodeSend = full_list[tag][SEND][local_host].removeHead();
-            pthread_mutex_unlock(&full_list[tag][SEND][local_host].mutex);
-
-            if (nodeSend == NULL) {
-                continue;
-            }
-
-            nodeRecv->db.size = nodeSend->db.size;
-            memcpy(nodeRecv->db.data, (const void *) nodeSend->db.data, nodeSend->db.size);
-
-            // Add the node to the tail of the 'full' receive list
-            pthread_mutex_lock(&full_list[tag][RECV][local_host].mutex);
-            if (full_list[tag][RECV][local_host].addTail(nodeRecv) == -1) {
-                printf("readFromSocket: add node to list fail: tag %d, local\n", tag);
-                pthread_exit(NULL);
-            }
-            pthread_mutex_unlock(&full_list[tag][RECV][local_host].mutex);
-
-            // Add the node to the 'free' send list
-            pthread_mutex_lock(&free_list[tag][SEND][local_host].mutex);
-            if (free_list[tag][SEND][local_host].addTail(nodeSend) == -1) {
-                printf("readFromSocket: add node to list fail: tag %d, local\n", tag);
-                pthread_exit(NULL);
-            }
-            pthread_mutex_unlock(&free_list[tag][SEND][local_host].mutex);
-            
-            // Reset nodeRecv
-            nodeRecv = NULL;
-        } else {
-            // Pull the 1st list node from the 'free' receive list
-            pthread_mutex_lock(&free_list[tag][RECV][src].mutex);
-            node = free_list[tag][RECV][src].removeHead();
-            pthread_mutex_unlock(&free_list[tag][RECV][src].mutex);
-
-            if (node == NULL) {
-                continue;
-            }
-
-            // Read from socket() in that list node
-            size_t n;
-            size_t r;
-            size_t size;
-
-            r = 0;
-            while (r < sizeof(size)) {
-                n = read(conn_fd, (char *) &size + r, sizeof(size) - r);
-                if (n < 0) {
-                    printf("readFromSocket: error on reading from src %d on tag %d\n", src, tag);
-                    pthread_exit(NULL);
-                }
-                
-                r += n;
-            }
-
-            r = 0;
-            while (r < size) {
-                n = read(conn_fd, (char *) node->db.data + r, size - r);
-                if (n < 0) {
-                    printf("readFromSocket: error on reading from src %d on tag %d\n", src, tag);
-                    pthread_exit(NULL);
-                }
-                
-                r += n;
-            }
-
-            node->db.size = size;
-
-            if (node->db.size > BLOCK_SIZE) {
-                printf("readFromSocket: error on datablock size %lu from src %d on tag %d\n",
-                        node->db.size, src, tag);
-                pthread_exit(NULL);
-            }
-
-            // Add the list node to the tail of the 'full' receive list
-            pthread_mutex_lock(&full_list[tag][RECV][src].mutex);
-            if (full_list[tag][RECV][src].addTail(node) == -1) {
-                printf("readFromSocket: add node to list fail: tag %d, src %d\n", tag, src);
-                pthread_exit(NULL);
-            }
-            pthread_mutex_unlock(&full_list[tag][RECV][src].mutex);
+        if (node == NULL) {
+            continue;
         }
+
+        // Read from socket() in that list node
+        size_t n;
+        size_t r;
+        size_t size;
+
+        r = 0;
+        while (r < sizeof(size)) {
+            n = read(conn_fd, (char *) &size + r, sizeof(size) - r);
+            if (n < 0) {
+                printf("readFromSocket: error on reading from src %d on tag %d\n", src, tag);
+                pthread_exit(NULL);
+            }
+
+            r += n;
+        }
+
+        r = 0;
+        while (r < size) {
+            n = read(conn_fd, (char *) node->db.data + r, size - r);
+            if (n < 0) {
+                printf("readFromSocket: error on reading from src %d on tag %d\n", src, tag);
+                pthread_exit(NULL);
+            }
+
+            r += n;
+        }
+
+        node->db.size = size;
+
+        if (node->db.size > BLOCK_SIZE) {
+            printf("readFromSocket: error on datablock size %lu from src %d on tag %d\n",
+                    node->db.size, src, tag);
+            pthread_exit(NULL);
+        }
+
+        // Add the list node to the tail of the 'full' receive list
+        pthread_mutex_lock(&full_list[tag][RECV][src].mutex);
+        if (full_list[tag][RECV][src].addTail(node) == -1) {
+            printf("readFromSocket: add node to list fail: tag %d, src %d\n", tag, src);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&full_list[tag][RECV][src].mutex);
     }
 }
 
@@ -299,52 +283,47 @@ void *writeToSocket(void *param) {
     int conn_fd = p->conn;
 
     while (true) {
-        if (dest == local_host) { 
-            // Local data transfer
-            // Not necesssary to do anything here, since readToSocket pulls from the 'full' send list
-        } else {
-            // Pull the 1st node from the 'full' send list
-            pthread_mutex_lock(&full_list[tag][SEND][dest].mutex);
-            node = full_list[tag][SEND][dest].removeHead();
-            pthread_mutex_unlock(&full_list[tag][SEND][dest].mutex);
+        // Pull the 1st node from the 'full' send list
+        pthread_mutex_lock(&full_list[tag][SEND][dest].mutex);
+        node = full_list[tag][SEND][dest].removeHead();
+        pthread_mutex_unlock(&full_list[tag][SEND][dest].mutex);
 
-            if (node == NULL) {
-                continue;
-            }
-
-            size_t n;
-
-            n = write(conn_fd, &node->db.size, sizeof(node->db.size));
-
-            if (n < 0) {
-                printf("writeToSocket: error on writing to dest %d on tag %d\n", dest, tag);
-                pthread_exit(NULL);
-            }
-
-            if (n != sizeof(node->db.size)) {
-                printf("writeToSocket: error - partial writing to dest %d on tag %d with size %lu\n", dest, tag, n);
-                pthread_exit(NULL);
-            }
-
-            n = write(conn_fd, node->db.data, node->db.size);
- 
-            if (n < 0) {
-                printf("writeToSocket: error on writing to dest %d on tag %d\n", dest, tag);
-                pthread_exit(NULL);
-            }
-
-            if (n != node->db.size) {
-                printf("writeToSocket: error - partial writing to dest %d on tag %d with size %lu\n", dest, tag, n);
-                pthread_exit(NULL);
-            }
-
-            // Add the node to the tail of the 'free' send list
-            pthread_mutex_lock(&free_list[tag][SEND][dest].mutex);
-            if (free_list[tag][SEND][dest].addTail(node) == -1) {
-                printf("writeToSocket: add node to list fail: tag %d, dest %d\n", tag, dest);
-                pthread_exit(NULL);
-            }
-            pthread_mutex_unlock(&free_list[tag][SEND][dest].mutex);
+        if (node == NULL) {
+            continue;
         }
+
+        size_t n;
+
+        n = write(conn_fd, &node->db.size, sizeof(node->db.size));
+
+        if (n < 0) {
+            printf("writeToSocket: error on writing to dest %d on tag %d\n", dest, tag);
+            pthread_exit(NULL);
+        }
+
+        if (n != sizeof(node->db.size)) {
+            printf("writeToSocket: error - partial writing to dest %d on tag %d with size %lu\n", dest, tag, n);
+            pthread_exit(NULL);
+        }
+
+        n = write(conn_fd, node->db.data, node->db.size);
+
+        if (n < 0) {
+            printf("writeToSocket: error on writing to dest %d on tag %d\n", dest, tag);
+            pthread_exit(NULL);
+        }
+
+        if (n != node->db.size) {
+            printf("writeToSocket: error - partial writing to dest %d on tag %d with size %lu\n", dest, tag, n);
+            pthread_exit(NULL);
+        }
+
+        // Add the node to the tail of the 'free' send list
+        pthread_mutex_lock(&free_list[tag][SEND][dest].mutex);
+        if (free_list[tag][SEND][dest].addTail(node) == -1) {
+            printf("writeToSocket: add node to list fail: tag %d, dest %d\n", tag, dest);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&free_list[tag][SEND][dest].mutex);
     }
 }
