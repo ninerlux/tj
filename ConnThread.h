@@ -8,6 +8,7 @@ extern void error(const char *msg);
 extern List ***free_list, ***full_list;
 extern HashList ***busy_list;
 extern int local_host;
+extern int hosts;
 
 using namespace std;
 
@@ -16,7 +17,7 @@ using namespace std;
 // Called by a worker thread when it wants to process received blocks
 // Returns 0 if no data available
 // Returns 1 if data available for tag, and populates db and src to point to DataBlock and have value of src
-int recv_begin(DataBlock *db, int *src, int node_nr, int tag);
+int recv_begin(DataBlock *db, int *src, int tag);
 
 // Called by a worker thread when it is done processing a received block
 // and that block of memory can be reused for another

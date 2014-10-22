@@ -62,7 +62,7 @@ void *worker(void *param) {
         int t = 0;
 
         while (t != hosts) {
-            while (!recv_begin(&db, &src, hosts, tag));
+            while (!recv_begin(&db, &src, tag));
 
             if (db.size > 0) {
                 printf("Node %d received \"%s\" %p from node %d\n", local_host, (char *) db.data, db.data, src);
@@ -147,6 +147,7 @@ void init(int node_nr) {
                 for (i = 0; i < MAX_BLOCKS_PER_LIST; i++) {
                     struct DataBlock db;
                     db.data = malloc(BLOCK_SIZE);
+                    memset(db.data, '\0', BLOCK_SIZE);
 
                     ListNode *node = new ListNode;
                     node->db = db;

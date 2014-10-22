@@ -7,7 +7,7 @@
 // Called by a worker thread when it wants to process received blocks
 // Returns 0 if no data available
 // Returns 1 if data available for tag, and populates db and src to point to DataBlock- and have value of src
-int recv_begin(DataBlock *db, int *src, int node_nr, int tag) {
+int recv_begin(DataBlock *db, int *src, int tag) {
     size_t largest_full_list_size;
     int largest_full_list_index;
 
@@ -18,7 +18,7 @@ int recv_begin(DataBlock *db, int *src, int node_nr, int tag) {
         largest_full_list_size = 0;
         largest_full_list_index = 0;
         if (full_list[tag] != NULL && full_list[tag][RECV] != NULL) {
-            for (int h = 0; h < node_nr; h++) {
+            for (int h = 0; h < hosts; h++) {
                 if (full_list[tag][RECV][h].getNum() > largest_full_list_size) {
                     largest_full_list_size = full_list[tag][RECV][h].getNum();
                     largest_full_list_index = h;
