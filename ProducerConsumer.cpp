@@ -4,12 +4,14 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <pthread.h>
 
 #include "Algorithms.h"
 #include "ConnectionLayer.h"
 #include "usertype.h"
 
 #define TAGS 2
+#define MSGS 100
 
 struct worker_param {
     int tag;
@@ -30,16 +32,12 @@ void *worker(void *param) {
     if (tag == 0) {
         // Send something to each node, followed by a termination message
         for (n = 0; n < hosts; n++) {
-            for (m = 0; m < 100; m++) {
+            for (m = 0; m < MSGS; m++) {
                 while(!CL->send_begin(&db, n, tag+1));
                 sprintf((char *) db.data, "Test message %d from %d", m, local_host);
                 db.size = strlen((const char *) db.data) + 1;
                 CL->send_end(db, n, tag+1);
             }
-
-            while(!CL->send_begin(&db, n, tag+1));
-            db.size = 0;
-            CL->send_end(db, n, tag+1);
 
             while(!CL->send_begin(&db, n, tag+1));
             db.size = 0;
