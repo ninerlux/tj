@@ -8,9 +8,6 @@
 #define MAX_NODES 255
 #define MAX_CORES 32
 
-#define RECV 0
-#define SEND 1
-
 #define BLOCK_SIZE 4096
 #define BUFFER_SIZE 4096        // Set BUFFER_SIZE equal to BLOCK_SIZE to read one block of data each time
 #define MAX_BLOCKS_PER_LIST 10  // Number of blocks initially allocated to the free lists
