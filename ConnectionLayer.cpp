@@ -1,13 +1,208 @@
-#include "ConnThread.h"
+#include <assert.h>
+#include <ctype.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
+#include "tcp.h"
+#include "ConnectionLayer.h"
+
+// Constructor
+ConnectionLayer::ConnectionLayer(const char *conf, const char *domain, int tags) {
+    this->tags = tags;
+
+    printf("Setup\n");
+    fflush(stdout);
+
+    conn = setupGrid(conf, domain);
+    assert(conn != NULL);
+
+    printf("Finished setup\n");
+    fflush(stdout);
+
+    int h = 0;
+    int t = 0;
+
+    while (conn[h] != NULL) {
+        for (t = 0; t < tags && conn[h][t] >= 0; t++);
+
+        if (t == tags) {
+            h++;
+        } else {
+            break;
+        }
+    }
+
+    local_host = h++;
+
+    // Not sure what the purposes of the next two blocks are
+    //     //temporary change-----
+    for (t = 0; t < tags; t++) {
+        conn[local_host][t] = -2;
+    }
+    //---------------------
+
+    while (conn[h] != NULL) {
+        for (t = 0; t < tags && conn[h][t] >= 0; t++);
+
+        if (t == tags) {
+            h++;
+        } else {
+            break;
+        }
+    }
+
+    hosts = h;
+    printf("hosts = %d\n", hosts);
+    server = conn[h + 1][0];
+    printf("server = %d\n", server);
+
+    // Print out the connection matrix for debugging
+    for (h = 0; h <= hosts + 1 ; h++) {
+        for (t = 0; t < tags; t++) {
+            printf("%d ", conn[h][t]);
+        } 
+        printf("\n");
+    }
+
+    printf("Init hosts\n");
+    fflush(stdout);
+
+    createLists();
+
+    printf("Finished init hosts\n");
+    fflush(stdout);
+
+    startThreads();
+
+    printf("Finished connection threads\n");
+    fflush(stdout);
+}
+
+int ConnectionLayer::get_hosts() {
+    return hosts;
+}
+
+int ConnectionLayer::get_local_host() {
+    return local_host;
+}
+
+int **ConnectionLayer::setupGrid(const char *conf, const char *domain) {
+    int hosts = 0;
+    int ports[MAX_HOSTS];
+    char *hostnames[MAX_HOSTS];
+    char hostname_and_port[MAX_HOSTS];
+    FILE *fp = fopen(conf, "r");
+
+    if (fp == NULL)
+        return NULL;
+
+    while (fgets(hostname_and_port, sizeof(hostname_and_port), fp) != NULL) {
+        size_t len = strlen(hostname_and_port);
+
+        if (hostname_and_port[len - 1] != '\n')
+            return NULL;
+
+        for (len = 0; !isspace(hostname_and_port[len]); len++);
+
+        hostname_and_port[len] = 0;
+        hostnames[hosts] = strdup(hostname_and_port);
+        ports[hosts] = atoi(&hostname_and_port[len + 1]);
+        assert(ports[hosts] > 0);
+
+        if (++hosts == MAX_HOSTS)
+            break;
+    }
+
+    fclose(fp);
+
+    return tcp_grid_tags(hostnames, ports, hosts, tags, domain);
+}
+
+void ConnectionLayer::createLists() {
+    int t, p, n, i;
+
+    free_list = new List **[tags];
+    busy_list = new HashList **[tags];
+    full_list = new List **[tags];
+
+    for (t = 0; t < tags; t++) {
+        free_list[t] = new List *[NUM_CONN_TYPES];
+        busy_list[t] = new HashList *[NUM_CONN_TYPES];
+        full_list[t] = new List *[NUM_CONN_TYPES];
+
+        for (p = 0; p < NUM_CONN_TYPES; p++) {
+            free_list[t][p] = new List[hosts];
+            busy_list[t][p] = new HashList[hosts];
+            full_list[t][p] = new List[hosts];
+
+            for (n = 0; n < hosts; n++) {
+                for (i = 0; i < MAX_BLOCKS_PER_LIST; i++) {
+                    struct DataBlock db;
+                    db.data = malloc(BLOCK_SIZE);
+                    memset(db.data, '\0', BLOCK_SIZE);
+
+                    ListNode *node = new ListNode;
+                    node->db = db;
+
+                    free_list[t][p][n].addTail(node);
+                } 
+            }
+        }
+    }
+}
+
+/* spawns (N-1) * T * 2 connection threads and 1 local transfer thread
+ * N: node number
+ * T: tag number
+ * 2: read / write - 0: read connection, 1: write connection
+ */
+void ConnectionLayer::startThreads() {
+    int h, t;
+
+    conn_threads = new pthread_t **[hosts];
+
+    for (h = 0; h < hosts; h++) {
+        if (h != local_host) {
+            conn_threads[h] = new pthread_t *[tags];
+
+            for (t = 0; t < tags; t++) {
+                thr_param *param;
+                CLContext *context;
+                conn_threads[h][t] = new pthread_t[NUM_CONN_TYPES];
+
+                param = new thr_param();
+                param->node = h;
+                param->tag = t;
+                param->conn = conn[h][t];
+                param->conn_type = RECV;
+
+                context = new CLContext();
+                context->CL = this;
+                context->param = param;
+                pthread_create(&conn_threads[h][t][RECV], NULL, &ConnectionLayer::doReadFromSocket, (void *) context);
+
+                param = new thr_param();
+                param->node = h;
+                param->tag = t;
+                param->conn = conn[h][t];
+                param->conn_type = SEND;
+
+                context = new CLContext();
+                context->CL = this;
+                context->param = param;
+
+                pthread_create(&conn_threads[h][t][SEND], NULL, &ConnectionLayer::doWriteToSocket, (void *) context);
+            }
+        }
+    }
+}
+
 // Called by a worker thread when it wants to process received blocks
 // Returns 0 if no data available
 // Returns 1 if data available for tag, and populates db and src to point to DataBlock- and have value of src
-int recv_begin(DataBlock *db, int *src, int tag) {
+int ConnectionLayer::recv_begin(DataBlock *db, int *src, int tag) {
     size_t largest_full_list_size;
     int largest_full_list_index;
 
@@ -70,7 +265,7 @@ int recv_begin(DataBlock *db, int *src, int tag) {
 
 // Called by a worker thread when it is done processing a received block
 // and that block of memory can be reused for another
-void recv_end(DataBlock db, int src, int tag) {
+void ConnectionLayer::recv_end(DataBlock db, int src, int tag) {
     ListNode *node = NULL;
 
     // Lock the 'busy' receive list for the given src and tag
@@ -121,7 +316,7 @@ void recv_end(DataBlock db, int src, int tag) {
 // Called by a worker thread when it is about to start working and needs a place for the output
 // Returns 0 if 'free' is empty (checked without locking)
 // Returns 1 if data block is available
-int send_begin(DataBlock *db, int dest, int tag) {
+int ConnectionLayer::send_begin(DataBlock *db, int dest, int tag) {
     if (free_list[tag][SEND][dest].getNum() == 0) {
         return 0;
     }
@@ -159,7 +354,7 @@ int send_begin(DataBlock *db, int dest, int tag) {
 }
 
 // Called by a worker thread when it is done filling a to-be-sent block
-void send_end(DataBlock db, int dest, int tag) {
+void ConnectionLayer::send_end(DataBlock db, int dest, int tag) {
     ListNode *node = NULL;
 
     // Lock the 'busy' send list for the given dest and tag
@@ -210,9 +405,20 @@ void send_end(DataBlock db, int dest, int tag) {
     }
 }
 
+
+void *ConnectionLayer::doReadFromSocket(void *context) {
+    ConnectionLayer *CL = ((CLContext *) context)->CL;
+    return CL->readFromSocket(((CLContext *) context)->param);
+}
+
+void *ConnectionLayer::doWriteToSocket(void *context) {
+    ConnectionLayer *CL = ((CLContext *) context)->CL;
+    return CL->writeToSocket(((CLContext *) context)->param);
+}
+
 // Called by the read connection thread
 // Can block on read
-void *readFromSocket(void *param) {
+void *ConnectionLayer::readFromSocket(void *param) {
     thr_param *p = (thr_param *) param;
     ListNode *node = NULL;
     int src = p->node;
@@ -275,7 +481,7 @@ void *readFromSocket(void *param) {
 }
 
 // Called by the write connection thread
-void *writeToSocket(void *param) {
+void *ConnectionLayer::writeToSocket(void *param) {
     thr_param *p = (thr_param *)param;
     ListNode *node;
     int dest = p->node;
