@@ -1,11 +1,12 @@
 #! /bin/sh
 
 timeout=3
+exe="join"
 
 # check number of arguments
 if [ $# -lt 1 ]
 then
-	echo "Give executable [folder]"
+	echo "Give join algorithm code"
 	exit 1
 fi
 
@@ -18,13 +19,13 @@ then
 fi
 
 # compile executable
-exe=$1
-if [ $exe != "hj" -a $exe != "tj2" -a $exe != "tj3" -a $exe != "tj4" -a $exe != "tj" ]
+algo=$1
+if [ $algo != "hj" -a $algo != "tj2" -a $algo != "tj3" -a $algo != "tj4" -a $algo != "test" ]
 then
-	echo "Give executable: hj/tj2/tj3/tj4"
+	echo "Give join algorithm code: hj/tj2/tj3/tj4/test"
 	exit 1
 fi
-make $exe
+make
 sleep $timeout
 
 # check for feed file or random
@@ -77,7 +78,7 @@ for host in $hosts
 do
 	sleep $timeout
 	echo "Running on $host" 
-	ssh $host "$PWD/$exe" &
+	ssh $host "$PWD/$exe $algo" &
 done
 
 # run feed file
