@@ -38,9 +38,23 @@ void printListBackward(ListNode *tail) {
 }
 
 int main(int argc, char** argv) {
-    int tags;
+    if (argc != 2) {
+        fprintf(stderr, "Usage: join <algoritm code>\n");
+        return 0;
+    }
 
-    ProducerConsumer *algo = new ProducerConsumer();
+    int tags;
+    char *code = argv[1];
+
+    AbstractAlgo *algo;
+   
+    if (strcmp(code, "test") == 0) {
+        algo = new ProducerConsumer();
+    } else {
+        fprintf(stderr, "Unrecognized algorithm code\n");
+        return 0;
+    }
+
     tags = algo->get_tags();
 
     CL = new ConnectionLayer(conf, domain, tags);
