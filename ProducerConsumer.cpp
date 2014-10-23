@@ -18,7 +18,7 @@ struct worker_param {
     ConnectionLayer *CL;
 };
 
-void *worker(void *param) {
+static void *worker(void *param) {
     worker_param *p = (worker_param *) param;
     int tag = p->tag;
     ConnectionLayer *CL = p->CL;

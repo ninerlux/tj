@@ -21,4 +21,4 @@ main.o : main.cpp
 
 clean:
 	rm -f *.o
-	rm -f tj
+	rm -f join
