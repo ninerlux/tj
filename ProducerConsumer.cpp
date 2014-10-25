@@ -71,7 +71,7 @@ int ProducerConsumer::get_tags() {
     return TAGS;
 }
 
-int ProducerConsumer::run(ConnectionLayer *CL) {
+int ProducerConsumer::run(ConnectionLayer *CL, struct table_r R, struct table_s S) {
     int t;
     worker_threads = new pthread_t[TAGS];
 
