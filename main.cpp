@@ -38,7 +38,7 @@ void printListBackward(ListNode *tail) {
 
 int main(int argc, char** argv) {
     if (argc != 2) {
-        fprintf(stderr, "Usage: join <algoritm code>\n");
+        fprintf(stderr, "Usage: join <algorithm code>\n");
         return 0;
     }
 
