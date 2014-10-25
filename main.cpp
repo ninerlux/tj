@@ -37,7 +37,7 @@ void printListBackward(ListNode *tail) {
     printf("\n");
 }
 
-struct table_r create_table_r(int bytes) {
+struct table_r create_table_r(long bytes) {
     int i, j;
     int rand;
     struct table_r R;
@@ -59,7 +59,7 @@ struct table_r create_table_r(int bytes) {
     return R;
 }
 
-struct table_s create_table_s(int bytes) {
+struct table_s create_table_s(long bytes) {
     int i, j;
     int rand;
     struct table_s S;
