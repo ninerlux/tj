@@ -111,7 +111,7 @@ int main(int argc, char** argv) {
 
     CL = new ConnectionLayer(conf, domain, tags);
 
-    algo->run(CL);
+    algo->run(CL, R, S);
 
 
     free(R.records);
