@@ -83,8 +83,8 @@ struct table_s create_table_s(long bytes) {
 
 
 int main(int argc, char** argv) {
-    if (argc != 2) {
-        fprintf(stderr, "Usage: join <algoritm code>\n");
+    if (argc != 4) {
+        fprintf(stderr, "Usage: join <algoritm code> <size of R in kb> <size of S as multiple of R>\n");
         return 0;
     }
 
@@ -97,8 +97,8 @@ int main(int argc, char** argv) {
 
     AbstractAlgo *algo;
 
-    struct table_r R = create_table_r(256);
-    struct table_s S = create_table_s(256);
+    struct table_r R = create_table_r(atol(argv[2]) * 1024);
+    struct table_s S = create_table_s(atol(argv[2]) * 1024 * atol(argv[3]));
 
     if (strcmp(code, "test") == 0) {
         algo = new ProducerConsumer();

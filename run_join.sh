@@ -4,9 +4,9 @@ timeout=3
 exe="join"
 
 # check number of arguments
-if [ $# -lt 1 ]
+if [ $# -lt 3 ]
 then
-	echo "Give join algorithm code"
+	echo "Give join algorithm code, size of R in kb, and size of S as multiple of R"
 	exit 1
 fi
 
@@ -78,7 +78,7 @@ for host in $hosts
 do
 	sleep $timeout
 	echo "Running on $host" 
-	ssh $host "$PWD/$exe $algo" &
+	ssh $host "$PWD/$exe $algo $2 $3" &
 done
 
 # run feed file
