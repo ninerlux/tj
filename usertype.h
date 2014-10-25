@@ -2,6 +2,7 @@
 #define _USERTYPE_H_
 
 #include <pthread.h>
+#include <stdint.h>
 #include <unordered_map>
 
 #define MAX_TAG 3
@@ -12,7 +13,36 @@
 #define BUFFER_SIZE 4096        // Set BUFFER_SIZE equal to BLOCK_SIZE to read one block of data each time
 #define MAX_BLOCKS_PER_LIST 10  // Number of blocks initially allocated to the free lists
 
+#define BYTES_PAYLOAD_R 4
+#define BYTES_PAYLOAD_S 4
+
 using namespace std;
+
+typedef uint32_t join_key_t;
+typedef struct r_payload_t { uint8_t bytes[BYTES_PAYLOAD_R]; } r_payload_t;
+typedef struct s_payload_t { uint8_t bytes[BYTES_PAYLOAD_S]; } s_payload_t;
+
+struct record_r {
+    join_key_t k;
+    r_payload_t p;
+};
+
+struct record_s {
+    join_key_t k;
+    s_payload_t p;
+};
+
+struct table_r {
+    record_r *records;
+    int num_bytes;
+    int num_records;
+};
+
+struct table_s {
+    struct record_s *records;
+    int num_bytes;
+    int num_records;
+};
 
 struct DataBlock {
     DataBlock() {
