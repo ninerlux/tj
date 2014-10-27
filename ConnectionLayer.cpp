@@ -127,7 +127,7 @@ void ConnectionLayer::createLists() {
     free_list = new List **[tags];
     busy_list = new HashList **[tags];
     full_list = new List **[tags];
-    full_recv_list_stats = new FullListStat *[tags];
+    full_recv_list_stats = new ListStat[tags];
 
     for (t = 0; t < tags; t++) {
         free_list[t] = new List *[NUM_CONN_TYPES];
@@ -258,19 +258,20 @@ int ConnectionLayer::recv_begin(DataBlock *db, int *src, int tag) {
         }
 
         while (full_recv_list_stats[tag].l_size == 0) {
-            pthread_cond_wait(&full_recv_conds[tag], &full_recv_list_stats[tag].mutex);
+            pthread_cond_wait(&full_recv_list_stats[tag].cond, &full_recv_list_stats[tag].mutex);
             l_index = -1;
         }
 
         if (l_index != -1) {
             //lock the longest receiving full list
-            pthread_lock(&full_list[tag][RECV][l_index].mutex);
+            pthread_mutex_lock(&full_list[tag][RECV][l_index].mutex);
             if (full_list[tag][RECV][l_index].getNum() > 0) {
+                full_recv_list_stats[tag].l_size = full_list[tag][RECV][l_index].getNum();
                 pthread_mutex_unlock(&full_recv_list_stats[tag].mutex);
                 break;
             } else {
                 //unlock the longest receiving full list
-                pthread_unlock(&full_list[tag][RECV][l_index].mutex);
+                pthread_mutex_unlock(&full_list[tag][RECV][l_index].mutex);
             }
         }
     }
@@ -279,7 +280,7 @@ int ConnectionLayer::recv_begin(DataBlock *db, int *src, int tag) {
     // Pull the 1st node from the 'full' list
     ListNode *node = full_list[tag][RECV][l_index].removeHead();
     if (node == NULL) {
-        printf("recv_begin: pull node from list fail: tag %d, src %d\n", tag, largest_full_list_index);
+        printf("recv_begin: pull node from list fail: tag %d, src %lu\n", tag, full_recv_list_stats[tag].l_size);
         exit(-1);
     }
     pthread_mutex_unlock(&full_list[tag][RECV][l_index].mutex);

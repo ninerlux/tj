@@ -93,19 +93,22 @@ private:
 };
 
 class HashList {
-    HashList() {
-        pthread_mutex_init(&mutex, NULL);
-    }
-
     //the hash list contains pointers to data blocks
     //HashList is the data structure of 'busy' list
     //It is used to record history of data blocks sent to worker thread to process
     //We only guarantee the void *data is not tampered when it is sent back
     //We do not guarantee data content is not modified
     //The pointer to ListNode needs to be stored in hash table's value to be recycled
+public:
+    HashList() {
+        pthread_mutex_init(&mutex, NULL);
+    }
     unordered_map<void*, ListNode*> list;
-    size_t num;
+    size_t getNum() {return num;}
     pthread_mutex_t mutex;
+
+private:
+    size_t num;
 };
 
 struct msg {
@@ -124,13 +127,13 @@ struct thr_param {
 };
 
 //statistic info for full lists per tag
-class FullListStat {
-    FullListStat(int _tag) : tag(_tag) {
+class ListStat {
+public:
+    ListStat() {
         pthread_mutex_init(&mutex, NULL);
         pthread_cond_init(&cond, NULL);
     };
 
-    int tag;
     pthread_cond_t cond;
     pthread_mutex_t mutex;
     size_t l_size; //longest full list size

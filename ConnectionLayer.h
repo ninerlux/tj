@@ -45,7 +45,7 @@ private:
     pthread_t ***conn_threads;
     List ***free_list, ***full_list;
     //pthread_cond_t *full_recv_conds;
-    FullListStat *full_recv_list_stats;
+    ListStat *full_recv_list_stats;
     HashList ***busy_list;
 
     static void *doReadFromSocket(void *context);
