@@ -37,6 +37,7 @@ static void *worker(void *param) {
                 sprintf((char *) db.data, "Test message %d from %d", m, local_host);
                 db.size = strlen((const char *) db.data) + 1;
                 CL->send_end(db, n, tag+1);
+                printf("\tNode %d sent \"%s\" %p to node %d\n", local_host, (char *) db.data, db.data, n);
             }
 
             while(!CL->send_begin(&db, n, tag+1));
@@ -53,7 +54,7 @@ static void *worker(void *param) {
             while (!CL->recv_begin(&db, &src, tag));
 
             if (db.size > 0) {
-                printf("Node %d received \"%s\" %p from node %d\n", local_host, (char *) db.data, db.data, src);
+                printf("\tNode %d received \"%s\" %p from node %d\n", local_host, (char *) db.data, db.data, src);
                 fflush(stdout);
             } else {
                 t++;

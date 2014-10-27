@@ -249,10 +249,10 @@ int ConnectionLayer::recv_begin(DataBlock *db, int *src, int tag) {
 	    // and pick the one with highest 'num' (i.e. longest list).
 	    // Do this without locking
 	    full_recv_list_stats[tag].l_size = 0;
-        printf("recv_begin: local %d, change l_size = 0\n", local_host);
+        //printf("recv_begin: local %d, change l_size = 0\n", local_host);
 
 	    for (int h = 0; h < hosts; h++) {
-			printf("local %d, Node %d: size %lu | ", local_host, h, full_list[tag][RECV][h].getNum()); 
+			//printf("local %d, Node %d: size %lu | ", local_host, h, full_list[tag][RECV][h].getNum()); 
 			if (full_list[tag][RECV][h].getNum() > full_recv_list_stats[tag].l_size) {
 				full_recv_list_stats[tag].l_size = full_list[tag][RECV][h].getNum();
 				l_index = h;
@@ -272,34 +272,34 @@ int ConnectionLayer::recv_begin(DataBlock *db, int *src, int tag) {
 			fflush(stdout);
 
 			l_index = -1;
-			printf("recv_begin: local %d, change l_index to -1\n", local_host);
+			//printf("recv_begin: local %d, change l_index to -1\n", local_host);
 		}
 
 		if (l_index != -1) {
 			//lock the longest receiving full list
-			printf("recv_begin: local %d, before acquire l_index %d mutex \n", local_host, l_index);
+			//printf("recv_begin: local %d, before acquire l_index %d mutex \n", local_host, l_index);
 			pthread_mutex_lock(&full_list[tag][RECV][l_index].mutex);
-			printf("recv_begin: lock l_index, local %d, tag %d, l_index %d, l_size %lu\n ", 
-					local_host, tag, l_index, full_list[tag][RECV][l_index].getNum());
+			//printf("recv_begin: lock l_index, local %d, tag %d, l_index %d, l_size %lu\n ", 
+					//local_host, tag, l_index, full_list[tag][RECV][l_index].getNum());
 			fflush(stdout);
 
 			if (full_list[tag][RECV][l_index].getNum() > 0) {
 				full_recv_list_stats[tag].l_size = full_list[tag][RECV][l_index].getNum();
-				printf("recv_begin: getNum > 0, local %d, tag %d, size %ld\n", local_host, tag, full_recv_list_stats[tag].l_size);
+				//printf("recv_begin: getNum > 0, local %d, tag %d, size %ld\n", local_host, tag, full_recv_list_stats[tag].l_size);
 				fflush(stdout);
 				pthread_mutex_unlock(&full_recv_list_stats[tag].mutex);
-				printf("recv_begin: local %d after release tag mutex \n", local_host);
+				//printf("recv_begin: local %d after release tag mutex \n", local_host);
 				break;
 			} else {
 				//unlock the longest receiving full list
-				printf("recv_begin: getNum = 0, local %d, tag %d\n", local_host, tag);
+				//printf("recv_begin: getNum = 0, local %d, tag %d\n", local_host, tag);
 				fflush(stdout);
 				pthread_mutex_unlock(&full_list[tag][RECV][l_index].mutex);
 		    }
 	    }
     }
 
-	printf("recv_begin: before pull node: local %d, tag %d, l_index %d, l_size %lu\n", local_host, tag, l_index, full_recv_list_stats[tag].l_size);
+	//printf("recv_begin: before pull node: local %d, tag %d, l_index %d, l_size %lu\n", local_host, tag, l_index, full_recv_list_stats[tag].l_size);
 	fflush(stdout);
     // 'full' receive list is locked at this point
     // Pull the 1st node from the 'full' list
@@ -310,7 +310,7 @@ int ConnectionLayer::recv_begin(DataBlock *db, int *src, int tag) {
     }
     pthread_mutex_unlock(&full_list[tag][RECV][l_index].mutex);
 	
-	printf("recv_begin: after release l_index %d mutex\n", l_index);
+	//printf("recv_begin: after release l_index %d mutex\n", l_index);
 	fflush(stdout);  
     // Lock the corresponding 'busy' receive list (the one for the same src and tag)
     pthread_mutex_lock(&busy_list[tag][RECV][l_index].mutex);
@@ -456,7 +456,7 @@ void ConnectionLayer::send_end(DataBlock db, int dest, int tag) {
         pthread_mutex_lock(&full_recv_list_stats[tag].mutex);
         full_recv_list_stats[tag].l_size = full_list[tag][RECV][dest].getNum();
         //there can be only 1 worker thread waiting on the cond of a given tag, so we use signal instead of broadcast
-        pthread_cond_signal(&full_recv_list_stats[tag].cond);
+        pthread_cond_broadcast(&full_recv_list_stats[tag].cond);
         pthread_mutex_unlock(&full_recv_list_stats[tag].mutex);
 
         // Unlock the 'full' receive list for the given dest and tag
@@ -547,15 +547,16 @@ void *ConnectionLayer::readFromSocket(void *param) {
             printf("readFromSocket: add node to list fail: tag %d, src %d\n", tag, src);
             pthread_exit(NULL);
         }
-
+        printf("readFromSocket: node %d got list lock tag %d src %d, attempting to get stats lock\n", local_host, tag, src);
+        fflush(stdout);
         //notify worker thread that sleeps on conditional variable of corresponding tag
         pthread_mutex_lock(&full_recv_list_stats[tag].mutex);
         full_recv_list_stats[tag].l_size = full_list[tag][RECV][src].getNum();
-		printf("readFromSocket: signal: add node with size %lu to full recv list tag %d src %d => list size %lu\n", 
-				size, tag, src, full_recv_list_stats[tag].l_size);
+		printf("readFromSocket: signal: add node with size %lu to full recv list tag %d src %d node %d=> list size %lu\n", 
+				size, tag, src, local_host, full_recv_list_stats[tag].l_size);
 		fflush(stdout);
         //there can be only 1 worker thread waiting on the cond of a given tag, so we use signal instead of broadcast
-        pthread_cond_signal(&full_recv_list_stats[tag].cond);
+        pthread_cond_broadcast(&full_recv_list_stats[tag].cond);
         pthread_mutex_unlock(&full_recv_list_stats[tag].mutex);
 
         pthread_mutex_unlock(&full_list[tag][RECV][src].mutex);
