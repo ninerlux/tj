@@ -44,7 +44,6 @@ private:
     int **conn;
     pthread_t ***conn_threads;
     List ***free_list, ***full_list;
-    //pthread_cond_t *full_recv_conds;
     ListStat *full_recv_list_stats;
     HashList ***busy_list;
 

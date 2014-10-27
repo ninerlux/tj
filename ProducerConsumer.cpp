@@ -11,7 +11,7 @@
 #include "usertype.h"
 
 #define TAGS 2
-#define MSGS 100
+#define MSGS 5
 
 struct worker_param {
     int tag;
