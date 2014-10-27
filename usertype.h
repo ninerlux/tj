@@ -39,7 +39,7 @@ struct table_r {
 };
 
 struct table_s {
-    struct record_s *records;
+    record_s *records;
     int num_bytes;
     int num_records;
 };
@@ -92,7 +92,7 @@ private:
     size_t num;     // Number of elements on the list
 };
 
-struct HashList {
+class HashList {
     HashList() {
         pthread_mutex_init(&mutex, NULL);
     }
@@ -123,5 +123,17 @@ struct thr_param {
     int conn;            //connection file descriptor
 };
 
+//statistic info for full lists per tag
+class FullListStat {
+    FullListStat(int _tag) : tag(_tag) {
+        pthread_mutex_init(&mutex, NULL);
+        pthread_cond_init(&cond, NULL);
+    };
+
+    int tag;
+    pthread_cond_t cond;
+    pthread_mutex_t mutex;
+    size_t l_size; //longest full list size
+};
 
 #endif

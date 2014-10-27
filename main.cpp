@@ -11,7 +11,7 @@
 
 using namespace std;
 
-static const char *conf = "/home/ajk2214/cs6901/tj/conf";
+static const char *conf = "/home/xinlu/tj/conf";
 static const char *domain = ".clic.cs.columbia.edu";
 
 static ConnectionLayer *CL;
