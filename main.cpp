@@ -87,6 +87,7 @@ struct table_s create_table_s(long bytes) {
 
 
 int main(int argc, char** argv) {
+<<<<<<< HEAD
     if (argc != 4) {
         fprintf(stderr, "Usage: join <algorithm code> <size of R in kb> <size of S as multiple of R>\n");
         return 0;
@@ -110,6 +111,80 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Unrecognized algorithm code\n");
         return 0;
     }
+=======
+    //set up connections
+    printf("Setup\n");
+    fflush(stdout);
+    conn = setup(conf, domain, tags, 255);
+    printf("Finished setup\n");
+    fflush(stdout);
+    assert(conn != NULL);
+    size_t h = 0;
+    size_t t = 0;
+    while (conn[h] != NULL) {
+        for (t = 0; t < tags && conn[h][t] >= 0; t++);
+        if (t == tags) {
+	    h++;
+	} else {
+	    break;
+	}
+    }
+    size_t local_host = h++;
+    printf("local host = %lu\n", local_host);
+    while (conn[h] != NULL) {
+        for (t = 0; t < tags && conn[h][t] >= 0; t++);
+        if (t == tags) {
+	    h++;
+	} else {
+	    break;
+	}
+    }
+    size_t hosts = h;
+    printf("hosts = %lu\n", hosts);
+    int server = conn[h + 1][0];
+    printf("server = %d\n", server);
+    //print out the connection matrix
+    for (h = 0; h <= hosts + 1 ; h++) {
+	for (t = 0; t < tags; t++) {
+	    printf("%d ", conn[h][t]);
+	} 
+	printf("\n");
+    }
+
+    printf("Init hosts\n");
+    fflush(stdout);
+    init(hosts);
+    printf("Finished init hosts\n");
+    fflush(stdout);
+
+    /* spawn N * T * 2 connection threads
+     * N: node number
+     * T: tag number
+     * 2: read / write - 0: read connection, 1: write connection
+     */
+//    int k = 0;
+//    conn_threads = new pthread_t **[hosts];
+//    for (h = 0; h < hosts; h++) {
+//        conn_threads[h] = new pthread_t *[tags];
+//        for (t = 0; t < tags; t++) {
+//            conn_threads[h][t] = new pthread_t[2];
+//            thr_param *param = new thr_param();
+//            param->host = h;
+//            param->tag = t;
+//            param->conn = conn[h][t];
+//            pthread_create(&conn_threads[h][t][0], NULL, readFromSocket, (void *)param);
+//            pthread_create(&conn_threads[h][t][1], NULL, writeToSocket, (void *)param);
+//
+//        }
+//    }
+//    /* spawn T worker threads
+//     * T: tag number
+//     */
+//    worker_threads = new pthread_t[tags];
+//    for (t = 0; t < tags; t++) {
+//        pthread_create(&worker_threads[t], NULL, worker, NULL);
+//    }
+>>>>>>> d45e81dbb43e1121d6d835418da126e4160dc004
 
     tags = algo->get_tags();
 

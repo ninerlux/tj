@@ -10,8 +10,8 @@
 #define MAX_CORES 32
 
 #define BLOCK_SIZE 4096
-#define BUFFER_SIZE 4096        // Set BUFFER_SIZE equal to BLOCK_SIZE to read one block of data each time
-#define MAX_BLOCKS_PER_LIST 10  // Number of blocks initially allocated to the free lists
+#define BUFFER_SIZE 4096 	//set BUFFER_SIZE equal to BLOCK_SIZE to read one block of data each time
+#define MAX_BLOCKS_PER_LIST 100 // Number of blocks initially allocated to the free list
 
 #define BYTES_PAYLOAD_R 4
 #define BYTES_PAYLOAD_S 4
@@ -131,16 +131,15 @@ struct msg {
     void *data;
     int size;
     int tag;
-    int node;       // either source or destination node (depending on direction)
-};
+    int node;		//either source of destionation node (depending on direction)
+}
 
 //parameters to pass to each thread
 struct thr_param {
-    int node;       // either source or destination node (depending on direction)
+    int node;       	// either source or destination node (depending on direction)
     int tag;
     int conn_type;       //0: read; 1: write
     int conn;            //connection file descriptor
 };
-
 
 #endif
