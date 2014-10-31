@@ -11,7 +11,7 @@
 
 using namespace std;
 
-static const char *conf = "/home/ajk2214/cs6901/tj/conf";
+static const char *conf = "/home/xinlu/tj/conf";
 static const char *domain = ".clic.cs.columbia.edu";
 
 static ConnectionLayer *CL;
@@ -45,15 +45,17 @@ struct table_r create_table_r(long bytes) {
     R.num_records = bytes / sizeof(record_r);
 
     R.records = (struct record_r *) malloc(bytes);
-    if (R.records == NULL)
+    if (R.records == NULL) {
         error("malloc failed");
+    }
 
     for (i = 0; i < R.num_records; i++) {
         while ((rand = (int) random()) == 0);
       
         R.records[i].k = (join_key_t) rand;
-        for (j = 0; j < BYTES_PAYLOAD_R; j++)
+        for (j = 0; j < BYTES_PAYLOAD_R; j++) {
             R.records[i].p.bytes[j] = ((uint8_t) R.records[i].k) + 1;
+        }
     }
 
     return R;
@@ -67,15 +69,17 @@ struct table_s create_table_s(long bytes) {
     S.num_records = bytes / sizeof(record_s);
 
     S.records = (struct record_s *) malloc(bytes);
-    if (S.records == NULL)
+    if (S.records == NULL) {
         error("malloc failed");
+    }
 
     for (i = 0; i < S.num_records; i++) {
         while ((rand = (int) random()) == 0);
       
         S.records[i].k = (join_key_t) rand;
-        for (j = 0; j < BYTES_PAYLOAD_S; j++)
+        for (j = 0; j < BYTES_PAYLOAD_S; j++) {
             S.records[i].p.bytes[j] = ((uint8_t) S.records[i].k) + 1;
+        }
     }
 
     return S;
@@ -111,7 +115,7 @@ int main(int argc, char** argv) {
 
     CL = new ConnectionLayer(conf, domain, tags);
 
-    algo->run(CL, R, S);
+    algo->run(CL, &R, &S);
 
 
     free(R.records);

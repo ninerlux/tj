@@ -39,7 +39,7 @@ struct table_r {
 };
 
 struct table_s {
-    struct record_s *records;
+    record_s *records;
     int num_bytes;
     int num_records;
 };
@@ -92,7 +92,8 @@ private:
     size_t num;     // Number of elements on the list
 };
 
-struct HashList {
+class HashList {
+public:
     HashList() {
         pthread_mutex_init(&mutex, NULL);
     }
@@ -106,6 +107,24 @@ struct HashList {
     unordered_map<void*, ListNode*> list;
     size_t num;
     pthread_mutex_t mutex;
+};
+
+class HashTable {
+public:
+    //local HashTable for hash join
+    //The HashTable stores keys and payloads in table R
+    HashTable(size_t size, float ld = 0.75) : num(size), load_factor(ld) {
+        table = new record_r *[num];
+    };
+
+    int hash(join_key_t k);
+    int add(record_r *r);
+    int find(join_key_t k, record_r *r);
+    bool probe_slot(int index);
+
+    int num;
+    float load_factor;  // hash table need to consider load factor to grow
+    record_r **table;
 };
 
 struct msg {

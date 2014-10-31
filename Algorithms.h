@@ -11,7 +11,7 @@ public:
     AbstractAlgo() {};
 
     virtual int get_tags() = 0;
-    virtual int run(ConnectionLayer *CL, struct table_r R, struct table_s S) = 0;
+    virtual int run(ConnectionLayer *, struct table_r *, struct table_s *) = 0;
 
 protected:
     pthread_t *worker_threads;
@@ -20,7 +20,13 @@ protected:
 class ProducerConsumer : public AbstractAlgo {
 public:
     int get_tags();
-    int run(ConnectionLayer *CL, struct table_r R, struct table_s S);
+    int run(ConnectionLayer *, struct table_r *, struct table_s *);
+};
+
+class HashJoin : public AbstractAlgo {
+public:
+    int get_tags();
+    int run(ConnectionLayer *, struct table_r *, struct table_s *);
 };
 
 #endif
