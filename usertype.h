@@ -132,7 +132,7 @@ struct msg {
     int size;
     int tag;
     int node;		//either source of destionation node (depending on direction)
-}
+};
 
 //parameters to pass to each thread
 struct thr_param {
