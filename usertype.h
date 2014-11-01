@@ -119,7 +119,7 @@ public:
 
     int hash(join_key_t k);
     int add(record_r *r);
-    int find(join_key_t k, record_r *r);
+    int find(join_key_t k, int index, record_r **r);	//index: starting searching index
     bool probe_slot(int index);
 
     int num;

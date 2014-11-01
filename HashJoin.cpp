@@ -45,9 +45,9 @@ static void *process_R(void *param) {
             while (!CL->send_begin(&db, dest, 1));
             memcpy(db.data, &R->records[i].k, sizeof(join_key_t));
             memcpy((char *)db.data + sizeof(join_key_t), &R->records[i].p, sizeof(r_payload_t));
-            db.size = sizeof(join_key_t) + sizeof(r_payload_t);
-            CL->send_end(db, dest, 1);
-        }
+			db.size = sizeof(join_key_t) + sizeof(r_payload_t);
+			CL->send_end(db, dest, 1);
+		}
         //send end flag to all nodes
         for (n = 0; n < hosts; n++) {
             while (!CL->send_begin(&db, n, 1));
@@ -59,7 +59,11 @@ static void *process_R(void *param) {
         int src;
         record_r *r;
         int t = 0;
-        int src_msg_num[hosts];
+        int *src_msg_num = new int[hosts];
+
+		for (int h = 0; h < hosts; h++) {
+			src_msg_num[h] = 0;
+		}
 
         while (t != hosts) {
             while (!CL->recv_begin(&db, &src, tag));
@@ -69,15 +73,15 @@ static void *process_R(void *param) {
                 r = new record_r();
                 memcpy(&r->k, db.data, sizeof(join_key_t));
                 memcpy(&r->p, (char *)db.data + sizeof(join_key_t), sizeof(r_payload_t));
-                printf("Node %d received record_r %d from node %d with size %lu\n", local_host, src_msg_num[src]++, src, db.size);
-                fflush(stdout);
+                //printf("R - Node %d received record_r (%u, %u) from node %d with size %lu\n", local_host, r->k, r->p, src, db.size);
+                //fflush(stdout);
                 //Add the data to hash table
-                if (h_table->add(r) < 0) {
-                    printf("Error: add data to hash table failed\n");
+				int ret;
+                if ((ret = h_table->add(r)) < 0) {
+                    printf("Error: R - add data to hash table failed\n");
                     fflush(stdout);
                     pthread_exit(NULL);
-                }
-
+				}
             } else {
                 t++;
             }
@@ -113,8 +117,8 @@ static void *process_S(void *param) {
             memcpy(db.data, &S->records[i].k, sizeof(join_key_t));
             memcpy((char *)db.data + sizeof(join_key_t), &S->records[i].p, sizeof(s_payload_t));
             db.size = sizeof(join_key_t) + sizeof(s_payload_t);
-            CL->send_end(db, dest, 1);
-        }
+			CL->send_end(db, dest, 1);
+		}
         //send end flag to all nodes
         for (n = 0; n < hosts; n++) {
             while (!CL->send_begin(&db, n, 1));
@@ -127,8 +131,13 @@ static void *process_S(void *param) {
         record_s *s;
         record_r *r = NULL;
         int t = 0;
-        int src_msg_num[hosts];
+        int *src_msg_num = new int[hosts];
 
+		for (int h = 0; h < hosts; h++) {
+			src_msg_num[h] = 0;
+		}
+
+		int join_num = 0;
         while (t != hosts) {
             while (!CL->recv_begin(&db, &src, tag));
 
@@ -137,14 +146,21 @@ static void *process_S(void *param) {
                 s = new record_s();
                 memcpy(&s->k, db.data, sizeof(join_key_t));
                 memcpy(&s->p, (char *)db.data + sizeof(join_key_t), sizeof(s_payload_t));
-                printf("Node %d received record_s #%d from node %d with size %lu\n", local_host, src_msg_num[src]++, src, db.size);
-                fflush(stdout);
+                //printf("S - Node %d received record_s (%u, %u) from node %d with size %lu\n", local_host, s->k, s->p, src, db.size);
+                //fflush(stdout);
                 //Probe data in hash table
-                if (h_table->find(s->k, r) >= 0) {
-                    //Output joined tuples
-                    printf("join_key %u, payload_r(1st byte) %u, payload_s(1st byte) %u\n", s->k, r->p.bytes[0], s->p.bytes[0]);
-                }
-            } else {
+				int ret = - 2;		//set 1st time starting searching index (ret + 1) as -1. 
+				//if ((ret = h_table->find(s->k, &r)) >= 0) {
+				//	//Output joined tuples
+				//	printf("Join Result: Node %d #%d, join_key %u payload_r %u, payload_s %u\n", local_host, join_num++, s->k, r->p, s->p);
+				//	fflush(stdout);
+				//}	
+				while ((ret = h_table->find(s->k, ret + 1, &r)) >= 0) {
+					//Output joined tuples
+					printf("Join Result: Node %d #%d, join_key %u payload_r %u, payload_s %u\n", local_host, ++join_num, s->k, r->p, s->p);
+					fflush(stdout);
+				}
+			} else {
                 t++;
             }
 
@@ -166,6 +182,7 @@ int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
     //create HashTable h_table
     HashTable *h_table = new HashTable(HASH_TABLE_SIZE);
 
+	
     //start processing table R
     for (t = 0; t < TAGS; t++) {
         worker_param *param;
@@ -199,7 +216,6 @@ int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
         void *retval;
         pthread_join(worker_threads[t], &retval);
     }
-
 
     return 0;
 }
