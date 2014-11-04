@@ -31,61 +31,74 @@ static void *process_R(void *param) {
 
     int hosts = CL->get_hosts();
     int local_host = CL->get_local_host();
-    int i;
-    int n;
-    DataBlock db;
 
-    if (tag == 0) {
-        // Send each record in R to destination node
-        int dest;
-        for (i = 0; i < R->num_records; i++) {
+	if (tag == 0) {
+		 DataBlock *dbs = new DataBlock[hosts];
+		// prepare data blocks for each destination
+		int dest;
+		for (dest = 0; dest < hosts; dest++) {
+			while (!CL->send_begin(&dbs[dest], dest, 1));
+		}
+       // Send each record in R to destination node
+        for (int i = 0; i < R->num_records; i++) {
             // hash each record's join key to get destination node number
             // hash() is the hash function of hash table. It is like "key % p", where p is a very large prime
             dest = h_table->hash(R->records[i].k) % hosts;
-            while (!CL->send_begin(&db, dest, 1));
-            memcpy(db.data, &R->records[i].k, sizeof(join_key_t));
-            memcpy((char *)db.data + sizeof(join_key_t), &R->records[i].p, sizeof(r_payload_t));
-			db.size = sizeof(join_key_t) + sizeof(r_payload_t);
-			CL->send_end(db, dest, 1);
+            if (dbs[dest].size + sizeof(record_r) > BLOCK_SIZE) {
+				CL->send_end(dbs[dest], dest, 1);
+				printf("R1 - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
+				fflush(stdout); 
+				while (!CL->send_begin(&dbs[dest], dest, 1));
+			}
+			memcpy((char *)dbs[dest].data + dbs[dest].size, &R->records[i], sizeof(record_r));
+			dbs[dest].size += sizeof(record_r);
 		}
-        //send end flag to all nodes
-        for (n = 0; n < hosts; n++) {
-            while (!CL->send_begin(&db, n, 1));
-            db.size = 0;
-            CL->send_end(db, n, 1);
-        }
+        // Send last partially filled data blocks and end flags to all nodes
+        for (dest = 0; dest < hosts; dest++) {
+			// Send last data blocks
+			if (dbs[dest].size > 0) {
+				CL->send_end(dbs[dest], dest, 1);
+				printf("R2 - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
+				fflush(stdout); 
+			}		
+			// Send end flags
+            while (!CL->send_begin(&dbs[dest], dest, 1));
+            dbs[dest].size = 0;
+			CL->send_end(dbs[dest], dest, 1);
+			printf("R3 - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
+			fflush(stdout); 
+		}		
     } else if (tag == 1) {
         // Receive until termination received from all nodes
         int src;
         record_r *r;
+		DataBlock db;
+
         int t = 0;
-        int *src_msg_num = new int[hosts];
-
-		for (int h = 0; h < hosts; h++) {
-			src_msg_num[h] = 0;
-		}
-
         while (t != hosts) {
             while (!CL->recv_begin(&db, &src, tag));
-
+			printf("R - Node %d received data block from node %d with size %lu\n", local_host, src, db.size);
+			fflush(stdout);
             if (db.size > 0) {
-                assert(db.size == sizeof(join_key_t) + sizeof(r_payload_t));
-                r = new record_r();
-                memcpy(&r->k, db.data, sizeof(join_key_t));
-                memcpy(&r->p, (char *)db.data + sizeof(join_key_t), sizeof(r_payload_t));
-                //printf("R - Node %d received record_r (%u, %u) from node %d with size %lu\n", local_host, r->k, r->p, src, db.size);
-                //fflush(stdout);
-                //Add the data to hash table
-				int ret;
-                if ((ret = h_table->add(r)) < 0) {
-                    printf("Error: R - add data to hash table failed\n");
-                    fflush(stdout);
-                    pthread_exit(NULL);
+				size_t bytes_copied = 0;
+				while (bytes_copied < db.size) { 
+					r = new record_r();
+					assert(bytes_copied + sizeof(record_r) <= db.size);
+					memcpy(r, (char *)db.data + bytes_copied, sizeof(record_r));
+					bytes_copied += sizeof(record_r);
+					//printf("R - Node %d received record_r (%u, %u) from node %d\n", local_host, r->k, r->p, src);
+					//fflush(stdout);
+					//Add the data to hash table
+					int ret;
+					if ((ret = h_table->add(r)) < 0) {
+						printf("Error: R - add data to hash table failed\n");
+						fflush(stdout);
+						pthread_exit(NULL);
+					}
 				}
             } else {
                 t++;
             }
-
             CL->recv_end(db, src, tag);
         }
     }
@@ -102,68 +115,77 @@ static void *process_S(void *param) {
 
     int hosts = CL->get_hosts();
     int local_host = CL->get_local_host();
-    int i;
-    int n;
-    DataBlock db;
 
     if (tag == 0) {
-        // Send each record in R to destination node
-        int dest;
-        for (i = 0; i < S->num_records; i++) {
+        DataBlock *dbs = new DataBlock[hosts];
+		// prepare data blocks for each destination
+		int dest;
+		for (dest = 0; dest < hosts; dest++) {
+			while (!CL->send_begin(&dbs[dest], dest, 1));
+		}
+		// Send each record in S to destination node
+        for (int i = 0; i < S->num_records; i++) {
             // hash each record's join key to get destination node number
             // hash() is the hash function of hash table. It is like "key % p", where p is a very large prime
-            dest = h_table->hash(S->records[i].k) % hosts;
-            while (!CL->send_begin(&db, dest, 1));
-            memcpy(db.data, &S->records[i].k, sizeof(join_key_t));
-            memcpy((char *)db.data + sizeof(join_key_t), &S->records[i].p, sizeof(s_payload_t));
-            db.size = sizeof(join_key_t) + sizeof(s_payload_t);
-			CL->send_end(db, dest, 1);
+			dest = h_table->hash(S->records[i].k) % hosts;
+            if (dbs[dest].size + sizeof(record_s) > BLOCK_SIZE) {
+				CL->send_end(dbs[dest], dest, 1);
+				printf("S1 - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
+				fflush(stdout); 
+				while (!CL->send_begin(&dbs[dest], dest, 1));
+			}
+			memcpy((char *)dbs[dest].data + dbs[dest].size, &S->records[i], sizeof(record_s));
+			dbs[dest].size += sizeof(record_s);
 		}
-        //send end flag to all nodes
-        for (n = 0; n < hosts; n++) {
-            while (!CL->send_begin(&db, n, 1));
-            db.size = 0;
-            CL->send_end(db, n, 1);
-        }
-    } else if (tag == 1) {
+		// Send last partially filled data blocks and end flags to all nodes
+		for (dest = 0; dest < hosts; dest++) {
+			// Send last data blocks
+			if (dbs[dest].size > 0) {
+				CL->send_end(dbs[dest], dest, 1);
+				printf("S2 - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
+				fflush(stdout);
+			}
+			// Send end flags
+			while (!CL->send_begin(&dbs[dest], dest, 1));
+			dbs[dest].size = 0;
+			CL->send_end(dbs[dest], dest, 1);
+			printf("S3 - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
+			fflush(stdout);
+		}    
+	} else if (tag == 1) {
         // Receive until termination received from all nodes
         int src;
         record_s *s;
         record_r *r = NULL;
+		DataBlock db;
+
         int t = 0;
-        int *src_msg_num = new int[hosts];
-
-		for (int h = 0; h < hosts; h++) {
-			src_msg_num[h] = 0;
-		}
-
 		int join_num = 0;
         while (t != hosts) {
             while (!CL->recv_begin(&db, &src, tag));
-
+			printf("S - Node %d received data block from node %d with size %lu\n", local_host, src, db.size);
+			fflush(stdout);
             if (db.size > 0) {
-                assert(db.size == sizeof(join_key_t) + sizeof(s_payload_t));
-                s = new record_s();
-                memcpy(&s->k, db.data, sizeof(join_key_t));
-                memcpy(&s->p, (char *)db.data + sizeof(join_key_t), sizeof(s_payload_t));
-                //printf("S - Node %d received record_s (%u, %u) from node %d with size %lu\n", local_host, s->k, s->p, src, db.size);
-                //fflush(stdout);
-                //Probe data in hash table
-				int ret = - 2;		//set 1st time starting searching index (ret + 1) as -1. 
-				//if ((ret = h_table->find(s->k, &r)) >= 0) {
-				//	//Output joined tuples
-				//	printf("Join Result: Node %d #%d, join_key %u payload_r %u, payload_s %u\n", local_host, join_num++, s->k, r->p, s->p);
-				//	fflush(stdout);
-				//}	
-				while ((ret = h_table->find(s->k, ret + 1, &r)) >= 0) {
-					//Output joined tuples
-					printf("Join Result: Node %d #%d, join_key %u payload_r %u, payload_s %u\n", local_host, ++join_num, s->k, r->p, s->p);
-					fflush(stdout);
+				size_t bytes_copied = 0;
+				while (bytes_copied < db.size) {
+					s = new record_s();
+					assert(bytes_copied + sizeof(record_s) <= db.size);	
+					memcpy(s, (char *)db.data + bytes_copied, sizeof(record_s));
+					bytes_copied += sizeof(record_s);
+					//printf("S - Node %d received record_s (%u, %u) from node %d with size %lu\n", local_host, s->k, s->p, src, db.size);
+					//fflush(stdout);
+					//Probe data in hash table
+					int ret = - 2;		//set 1st time starting searching index (ret + 1) as -1. 
+					while ((ret = h_table->find(s->k, ret + 1, &r)) >= 0) {
+						//Output joined tuples
+						printf("Join Result: Node %d #%d, join_key %u payload_r %u, payload_s %u\n", local_host, ++join_num, 
+								s->k, r->p, s->p);
+						fflush(stdout);
+					}
 				}
 			} else {
                 t++;
             }
-
             CL->recv_end(db, src, tag);
         }
     }
