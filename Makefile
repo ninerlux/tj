@@ -1,14 +1,17 @@
 CC = g++
 CFLAGS = -pthread -Wall -g -std=c++0x
 
-tj : main.o tcp.o usertype.o WorkerThread.o ConnThread.o
-	${CC} ${CFLAGS} ConnThread.o WorkerThread.o tcp.o usertype.o main.o -o tj
+join : main.o tcp.o usertype.o HashJoin.o ProducerConsumer.o ConnectionLayer.o
+	${CC} ${CFLAGS} ConnectionLayer.o ProducerConsumer.o HashJoin.o tcp.o usertype.o main.o -o join
 
-ConnThread.o : ConnThread.h ConnThread.cpp
-	${CC} ${CFLAGS} -c ConnThread.cpp -o ConnThread.o
+ConnectionLayer.o : ConnectionLayer.h ConnectionLayer.cpp
+	${CC} ${CFLAGS} -c ConnectionLayer.cpp -o ConnectionLayer.o
 
-WorkerThread.o : WorkerThread.h WorkerThread.cpp
-	${CC} ${CFLAGS} -c WorkerThread.cpp -o WorkerThread.o
+HashJoin.o : Algorithms.h HashJoin.cpp
+	${CC} ${CFLAGS} -c HashJoin.cpp -o HashJoin.o
+
+ProducerConsumer.o : Algorithms.h ProducerConsumer.cpp
+	${CC} ${CFLAGS} -c ProducerConsumer.cpp -o ProducerConsumer.o
 
 usertype.o: usertype.h usertype.cpp
 	${CC} ${CFLAGS} -c usertype.cpp -o usertype.o
@@ -21,4 +24,4 @@ main.o : main.cpp
 
 clean:
 	rm -f *.o
-	rm -f tj
+	rm -f join

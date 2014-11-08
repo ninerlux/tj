@@ -2,20 +2,47 @@
 #define _USERTYPE_H_
 
 #include <pthread.h>
+#include <stdint.h>
 #include <unordered_map>
 
 #define MAX_TAG 3
 #define MAX_NODES 255
 #define MAX_CORES 32
 
-#define RECV 0
-#define SEND 1
-
 #define BLOCK_SIZE 4096
-#define BUFFER_SIZE 4096        // Set BUFFER_SIZE equal to BLOCK_SIZE to read one block of data each time
-#define MAX_BLOCKS_PER_LIST 10  // Number of blocks initially allocated to the free lists
+#define BUFFER_SIZE 4096 	//set BUFFER_SIZE equal to BLOCK_SIZE to read one block of data each time
+#define MAX_BLOCKS_PER_LIST 100 // Number of blocks initially allocated to the free list
+
+#define BYTES_PAYLOAD_R 4
+#define BYTES_PAYLOAD_S 4
 
 using namespace std;
+
+typedef uint32_t join_key_t;
+typedef struct r_payload_t { uint8_t bytes[BYTES_PAYLOAD_R]; } r_payload_t;
+typedef struct s_payload_t { uint8_t bytes[BYTES_PAYLOAD_S]; } s_payload_t;
+
+struct record_r {
+    join_key_t k;
+    r_payload_t p;
+};
+
+struct record_s {
+    join_key_t k;
+    s_payload_t p;
+};
+
+struct table_r {
+    record_r *records;
+    int num_bytes;
+    int num_records;
+};
+
+struct table_s {
+    record_s *records;
+    int num_bytes;
+    int num_records;
+};
 
 struct DataBlock {
     DataBlock() {
@@ -65,7 +92,8 @@ private:
     size_t num;     // Number of elements on the list
 };
 
-struct HashList {
+class HashList {
+public:
     HashList() {
         pthread_mutex_init(&mutex, NULL);
     }
@@ -81,20 +109,37 @@ struct HashList {
     pthread_mutex_t mutex;
 };
 
+class HashTable {
+public:
+    //local HashTable for hash join
+    //The HashTable stores keys and payloads in table R
+    HashTable(size_t size, float ld = 0.75) : num(size), load_factor(ld) {
+        table = new record_r *[num];
+    };
+
+    int hash(join_key_t k);
+    int add(record_r *r);
+    int find(join_key_t k, int index, record_r **r);	//index: starting searching index
+    bool probe_slot(int index);
+
+    int num;
+    float load_factor;  // hash table need to consider load factor to grow
+    record_r **table;
+};
+
 struct msg {
     void *data;
     int size;
     int tag;
-    int node;       // either source or destination node (depending on direction)
+    int node;		//either source of destionation node (depending on direction)
 };
 
 //parameters to pass to each thread
 struct thr_param {
-    int node;       // either source or destination node (depending on direction)
+    int node;       	// either source or destination node (depending on direction)
     int tag;
     int conn_type;       //0: read; 1: write
     int conn;            //connection file descriptor
 };
-
 
 #endif

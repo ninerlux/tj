@@ -1,113 +1,24 @@
 #include <iostream>
 #include <assert.h>
 #include <string.h>
-#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/time.h>
 #include <unistd.h>
 
-#include "tcp.h"
-#include "usertype.h"
-#include "ConnThread.h"
+#include "Algorithms.h"
+#include "ConnectionLayer.h"
 
 using namespace std;
 
-const char *conf = "/home/ajk2214/cs6901/tj/conf";
-const char *domain = ".clic.cs.columbia.edu";
-const int tags = 2;
-const int conn_type = 2; // Two types of connection. 0: read; 1: write.
+static const char *conf = "/home/xinlu/tj/conf";
+static const char *domain = ".clic.cs.columbia.edu";
 
-int local_host;
-int hosts;
-int server;
-
-int **conn;
-pthread_t ***conn_threads;
-pthread_t *worker_threads;
-
-List ***free_list, ***full_list;
-HashList ***busy_list;
+static ConnectionLayer *CL;
 
 void error(const char *info) {
     perror(info);
     exit(1);
-}
-
-
-void *worker(void *param) {
-    thr_param *p = (thr_param *) param;
-    int tag = p->tag;
-    int m;
-    int n;
-    DataBlock db;
-
-    if (tag == 0) {
-        // Send something to each node, followed by a termination message
-        for (n = 0; n < hosts; n++) {
-            for (m = 0; m < 100; m++) {
-                while(!send_begin(&db, n, tag+1));
-                sprintf((char *) db.data, "Test message %d from %d", m, local_host);
-                db.size = strlen((const char *) db.data) + 1;
-                send_end(db, n, tag+1);
-            }
-
-            while(!send_begin(&db, n, tag+1));
-            db.size = 0;
-            send_end(db, n, tag+1);
-        }
-    } else if (tag == 1) {
-        // Receive until termination received from all nodes
-        DataBlock db;
-        int src;
-        int t = 0;
-
-        while (t != hosts) {
-            while (!recv_begin(&db, &src, hosts, tag));
-
-            if (db.size > 0) {
-                printf("Node %d received \"%s\" %p from node %d\n", local_host, (char *) db.data, db.data, src);
-                fflush(stdout);
-            } else {
-                t++;
-            }
-
-            recv_end(db, src, tag);
-        }
-    }
-
-    return NULL;
-}
-
-int **setup(const char *conf_filename, const char *domain, size_t tags, size_t max_hosts) {
-    size_t hosts = 0;
-    int ports[max_hosts];
-    char *hostnames[max_hosts];
-    char hostname_and_port[max_hosts];
-    FILE *fp = fopen(conf_filename, "r");
-
-    if (fp == NULL)
-        return NULL;
-
-    while (fgets(hostname_and_port, sizeof(hostname_and_port), fp) != NULL) {
-        size_t len = strlen(hostname_and_port);
-
-        if (hostname_and_port[len - 1] != '\n')
-            return NULL;
-
-        for (len = 0; !isspace(hostname_and_port[len]); len++);
-
-        hostname_and_port[len] = 0;
-        hostnames[hosts] = strdup(hostname_and_port);
-        ports[hosts] = atoi(&hostname_and_port[len + 1]);
-        assert(ports[hosts] > 0);
-
-        if (++hosts == max_hosts)
-            break;
-    }
-
-    fclose(fp);
-
-    return tcp_grid_tags(hostnames, ports, hosts, tags, domain);
 }
 
 void printListForward(ListNode *head) {
@@ -126,154 +37,95 @@ void printListBackward(ListNode *tail) {
     printf("\n");
 }
 
-void init(int node_nr) {
-    int t, p, n, i;
+struct table_r create_table_r(long bytes) {
+    int i, j;
+    int rand;
+    struct table_r R;
+    R.num_bytes = bytes;
+    R.num_records = bytes / sizeof(record_r);
 
-    free_list = new List **[tags];
-    busy_list = new HashList **[tags];
-    full_list = new List **[tags];
+	R.records = (struct record_r *) malloc(bytes);
+	if (R.records == NULL) {
+		error("malloc failed");
+	}
 
-    for (t = 0; t < tags; t++) {
-        free_list[t] = new List *[conn_type];
-        busy_list[t] = new HashList *[conn_type];
-        full_list[t] = new List *[conn_type];
+	printf("Create R: num of records = %d\n", R.num_records);
 
-        for (p = 0; p < conn_type; p++) {
-            free_list[t][p] = new List[node_nr];
-            busy_list[t][p] = new HashList[node_nr];
-            full_list[t][p] = new List[node_nr];
-
-            for (n = 0; n < node_nr; n++) {
-                for (i = 0; i < MAX_BLOCKS_PER_LIST; i++) {
-                    struct DataBlock db;
-                    db.data = malloc(BLOCK_SIZE);
-
-                    ListNode *node = new ListNode;
-                    node->db = db;
-
-                    free_list[t][p][n].addTail(node);
-                } 
-            }
+	for (i = 0; i < R.num_records; i++) {
+		while ((rand = (int) random()) == 0);
+      
+        R.records[i].k = (join_key_t) rand % 100000;
+        for (j = 0; j < BYTES_PAYLOAD_R; j++) {
+            R.records[i].p.bytes[j] = ((uint8_t) random()) + 1;
         }
     }
+
+    return R;
 }
 
-int main(int argc, char** argv) {
-    // Set up connections
-    printf("Setup\n");
-    fflush(stdout);
+struct table_s create_table_s(long bytes) {
+    int i, j;
+    int rand;
+    struct table_s S;
+    S.num_bytes = bytes;
+    S.num_records = bytes / sizeof(record_s);
 
-    conn = setup(conf, domain, tags, 255);
+	printf("Create S: num of records = %d\n", S.num_records);
 
-    printf("Finished setup\n");
-    fflush(stdout);
+	S.records = (struct record_s *) malloc(bytes);
+	if (S.records == NULL) {
+		error("malloc failed");
+	}
 
-    assert(conn != NULL);
-    int h = 0;
-    int t = 0;
-
-    while (conn[h] != NULL) {
-        for (t = 0; t < tags && conn[h][t] >= 0; t++);
-
-        if (t == tags) {
-	        h++;
-	    } else {
-	        break;
-	    }
-    }
-
-    local_host = h++;
-    printf("local host = %d\n", local_host);
-    
-    // Not sure what the purposes of the next two blocks are
-    //temporary change-----
-    for (t = 0; t < tags; t++) {
-        conn[local_host][t] = -2;
-    }
-    //---------------------
-    
-    while (conn[h] != NULL) {
-        for (t = 0; t < tags && conn[h][t] >= 0; t++);
-
-        if (t == tags) {
-	        h++;
-    	} else {
-	        break;
-    	}
-    }
-
-    hosts = h;
-    printf("hosts = %d\n", hosts);
-    server = conn[h + 1][0];
-    printf("server = %d\n", server);
-
-    // Print out the connection matrix for debugging
-    for (h = 0; h <= hosts + 1 ; h++) {
-	    for (t = 0; t < tags; t++) {
-	        printf("%d ", conn[h][t]);
-    	} 
-	    printf("\n");
-    }
-
-    printf("Init hosts\n");
-    fflush(stdout);
-
-    init(hosts);
-
-    printf("Finished init hosts\n");
-    fflush(stdout);
-
-    /* spawn N * T * 2 connection threads (including connections to itself)
-     * N: node number
-     * T: tag number
-     * 2: read / write - 0: read connection, 1: write connection
-     * The ConnThread methods differentiate data transfer between a node to
-     * itself and a node to other nodes
-     */
-    conn_threads = new pthread_t **[hosts];
-
-    for (h = 0; h < hosts; h++) {
-        conn_threads[h] = new pthread_t *[tags];
-
-        for (t = 0; t < tags; t++) {
-            printf("Creating threads %d %d\n", h, t);
-            fflush(stdout);
-
-            thr_param *param;
-            conn_threads[h][t] = new pthread_t[conn_type];
-
-            param = new thr_param();
-            param->node = h;
-            param->tag = t;
-            param->conn = conn[h][t];
-            param->conn_type = RECV;
-            pthread_create(&conn_threads[h][t][RECV], NULL, &readFromSocket, (void *) param);
-
-            param = new thr_param();
-            param->node = h;
-            param->tag = t;
-            param->conn = conn[h][t];
-            param->conn_type = SEND;
-            pthread_create(&conn_threads[h][t][SEND], NULL, &writeToSocket, (void *) param);
+    for (i = 0; i < S.num_records; i++) {
+        while ((rand = (int) random()) == 0);
+      
+        S.records[i].k = (join_key_t) rand % 100000;
+        for (j = 0; j < BYTES_PAYLOAD_S; j++) {
+            S.records[i].p.bytes[j] = ((uint8_t) random()) + 1;
         }
     }
 
+    return S;
+}
 
-    /* spawn T worker threads
-     * T: tag number
-     */
-    worker_threads = new pthread_t[tags];
-    for (t = 0; t < tags; t++) {
-        thr_param *param;
-        param = new thr_param();
-        param->tag = t;
-        pthread_create(&worker_threads[t], NULL, &worker, (void *) param);
+
+int main(int argc, char** argv) {
+    if (argc != 4) {
+        fprintf(stderr, "Usage: join <algorithm code> <size of R in kb> <size of S as multiple of R>\n");
+        return 0;
     }
 
-    for (t = 0; t < tags; t++) {
-        void *retval;
-        pthread_join(worker_threads[t], &retval);
+    timeval t1;
+    gettimeofday(&t1, NULL);
+    srandom(t1.tv_usec * t1.tv_sec);
+
+    int tags;
+    char *code = argv[1];
+
+    AbstractAlgo *algo;
+
+    struct table_r R = create_table_r(atol(argv[2]) * 1024  );
+    struct table_s S = create_table_s(atol(argv[2]) * 1024   * atol(argv[3]));
+
+    if (strcmp(code, "test") == 0) {
+        algo = new ProducerConsumer();
+    } else if (strcmp(code, "hj") == 0) {
+		algo = new HashJoin();
+	} else {
+        fprintf(stderr, "Unrecognized algorithm code\n");
+        return 0;
     }
+
+    tags = algo->get_tags();
+
+    CL = new ConnectionLayer(conf, domain, tags);
+
+    algo->run(CL, &R, &S);
+
+
+    free(R.records);
+    free(S.records);
 
     return 0;
 }
