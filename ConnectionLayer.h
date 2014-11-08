@@ -43,8 +43,8 @@ private:
     int server;
     int **conn;
     pthread_t ***conn_threads;
-    List ***free_list, ***full_list;
-    HashList ***busy_list;
+    List ***free_lists, ***full_lists;
+    HashList ***busy_lists;
 
     static void *doReadFromSocket(void *context);
     static void *doWriteToSocket(void *context);

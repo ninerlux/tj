@@ -124,19 +124,19 @@ int **ConnectionLayer::setupGrid(const char *conf, const char *domain) {
 void ConnectionLayer::createLists() {
     int t, p, n, i;
 
-    free_list = new List **[tags];
-    busy_list = new HashList **[tags];
-    full_list = new List **[tags];
+    free_lists = new List **[tags];
+    busy_lists = new HashList **[tags];
+    full_lists = new List **[tags];
 
     for (t = 0; t < tags; t++) {
-        free_list[t] = new List *[NUM_CONN_TYPES];
-        busy_list[t] = new HashList *[NUM_CONN_TYPES];
-        full_list[t] = new List *[NUM_CONN_TYPES];
+        free_lists[t] = new List *[NUM_CONN_TYPES];
+        busy_lists[t] = new HashList *[NUM_CONN_TYPES];
+        full_lists[t] = new List *[NUM_CONN_TYPES];
 
         for (p = 0; p < NUM_CONN_TYPES; p++) {
-            free_list[t][p] = new List[hosts];
-            busy_list[t][p] = new HashList[hosts];
-            full_list[t][p] = new List[hosts];
+            free_lists[t][p] = new List[hosts];
+            busy_lists[t][p] = new HashList[hosts];
+            full_lists[t][p] = new List[hosts];
 
             for (n = 0; n < hosts; n++) {
                 for (i = 0; i < MAX_BLOCKS_PER_LIST; i++) {
@@ -147,7 +147,7 @@ void ConnectionLayer::createLists() {
                     ListNode *node = new ListNode;
                     node->db = db;
 
-                    free_list[t][p][n].addTail(node);
+                    free_lists[t][p][n].addTail(node);
                 } 
             }
         }
@@ -206,6 +206,9 @@ void ConnectionLayer::startThreads() {
 int ConnectionLayer::recv_begin(DataBlock *db, int *src, int tag) {
     size_t largest_full_list_size;
     int largest_full_list_index;
+    List *full_list;
+    HashList *busy_list;
+    ListNode *node;
 
     while (true) {
         // Look at all the 'full' receive lists for given tag (N of them)
@@ -213,15 +216,15 @@ int ConnectionLayer::recv_begin(DataBlock *db, int *src, int tag) {
         // Do this without locking
         largest_full_list_size = 0;
         largest_full_list_index = 0;
-        if (full_list[tag] != NULL && full_list[tag][RECV] != NULL) {
+        if (full_lists[tag] != NULL && full_lists[tag][RECV] != NULL) {
             for (int h = 0; h < hosts; h++) {
-                if (full_list[tag][RECV][h].getNum() > largest_full_list_size) {
-                    largest_full_list_size = full_list[tag][RECV][h].getNum();
+                if (full_lists[tag][RECV][h].getNum() > largest_full_list_size) {
+                    largest_full_list_size = full_lists[tag][RECV][h].getNum();
                     largest_full_list_index = h;
                 }
             }
         } else {
-            error("recv_begin: full_list[tag] or full[tag][RECV] is NULL!");
+            error("recv_begin: full_lists[tag] or full[tag][RECV] is NULL!");
         }
 
         if (largest_full_list_size == 0) {
@@ -229,35 +232,31 @@ int ConnectionLayer::recv_begin(DataBlock *db, int *src, int tag) {
         }
 
         // Lock that 'full' receive list
-        pthread_mutex_lock(&full_list[tag][RECV][largest_full_list_index].mutex);
+        full_list = &full_lists[tag][RECV][largest_full_list_index];
+        full_list->lock();
 
         // Check if largest_full_list_size > 0
         // Necessary because we checked the num before locking
-        if (largest_full_list_size > 0) {
+        if (full_list->getNum() > 0) {
             break;
         } else {
-            pthread_mutex_unlock(&full_list[tag][RECV][largest_full_list_index].mutex);
+            full_list->unlock();
         }
     }
 
     // 'full' receive list is locked at this point
     // Pull the 1st node from the 'full' list
-    ListNode *node = full_list[tag][RECV][largest_full_list_index].removeHead();
-    if (node == NULL) {
+    if (!(node = full_list->removeHead())) {
         printf("recv_begin: pull node from list fail: tag %d, src %d\n", tag, largest_full_list_index);
         exit(-1);
     }
-    pthread_mutex_unlock(&full_list[tag][RECV][largest_full_list_index].mutex);
+    full_list->unlock();
 
-    // Lock the corresponding 'busy' receive list (the one for the same src and tag)
-    pthread_mutex_lock(&busy_list[tag][RECV][largest_full_list_index].mutex);
-
-    // Move the node to the busy receive list
     *db = node->db;
-    busy_list[tag][RECV][largest_full_list_index].list[db->data] = node;
-
-    // Unlock the lists
-    pthread_mutex_unlock(&busy_list[tag][RECV][largest_full_list_index].mutex);
+    busy_list = &busy_lists[tag][RECV][largest_full_list_index];
+    busy_list->lock();
+    busy_list->list[db->data] = node;
+    busy_list->unlock();
 
     *src = largest_full_list_index;
 
@@ -268,48 +267,33 @@ int ConnectionLayer::recv_begin(DataBlock *db, int *src, int tag) {
 // and that block of memory can be reused for another
 void ConnectionLayer::recv_end(DataBlock db, int src, int tag) {
     ListNode *node = NULL;
-
-    // Lock the 'busy' receive list for the given src and tag
-    pthread_mutex_lock(&busy_list[tag][RECV][src].mutex);
+    HashList *busy_list = &busy_lists[tag][RECV][src];
 
     // Find the list node for that db on the 'busy' list (based on the value of the data pointer)
-    unordered_map<void*, ListNode*>::const_iterator iter = busy_list[tag][RECV][src].list.find(db.data);
-    if (iter != busy_list[tag][RECV][src].list.end()) {
+    busy_list->lock();
+    unordered_map<void*, ListNode*>::const_iterator iter = busy_list->list.find(db.data);
+    if (iter != busy_list->list.end()) {
         node = iter->second;
-        busy_list[tag][RECV][src].list.erase(db.data);
+        busy_list->list.erase(db.data);
     } else {
-        pthread_mutex_unlock(&busy_list[tag][RECV][src].mutex);
+        busy_list->unlock();
         error("recv_end: data pointer tampered!");
     }
-
-    // Unlock the 'busy' receive list
-    pthread_mutex_unlock(&busy_list[tag][RECV][src].mutex);
+    busy_list->unlock();
 
     if (src == local_host) {
         // Local transfer: immediately recycle the node to the free send list
-        // Lock the 'free' send list for the given src and tag
-        pthread_mutex_lock(&free_list[tag][SEND][src].mutex);
-
         // Add that list node to the tail of the 'free' send list
-        if (free_list[tag][SEND][src].addTail(node) == -1) {
+        if (free_lists[tag][SEND][src].addTailSafe(node) == -1) {
             printf("recv_end: add node to list fail: tag %d, src %d\n", tag, src);
             exit(-1);
         }
-
-        // Unlock the 'free' send list for the given src and tag
-        pthread_mutex_unlock(&free_list[tag][SEND][src].mutex);
     } else {
-        // Lock the 'free' receive list for the given src and tag
-        pthread_mutex_lock(&free_list[tag][RECV][src].mutex);
-
         // Add that list node to the tail of the 'free' receive list
-        if (free_list[tag][RECV][src].addTail(node) == -1) {
+        if (free_lists[tag][RECV][src].addTailSafe(node) == -1) {
             printf("recv_end: add node to list fail: tag %d, src %d\n", tag, src);
             exit(-1);
         }
-
-        // Unlock the 'free' receive list for the given src and tag
-        pthread_mutex_unlock(&free_list[tag][RECV][src].mutex);
     }
 }
 
@@ -318,91 +302,71 @@ void ConnectionLayer::recv_end(DataBlock db, int src, int tag) {
 // Returns 0 if 'free' is empty (checked without locking)
 // Returns 1 if data block is available
 int ConnectionLayer::send_begin(DataBlock *db, int dest, int tag) {
-    if (free_list[tag][SEND][dest].getNum() == 0) {
+    List *free_list = &free_lists[tag][SEND][dest];
+    HashList *busy_list = &busy_lists[tag][SEND][dest];
+    ListNode *node;
+
+    if (free_list->getNum() == 0) {
         return 0;
     }
 
-    // Lock 'free' send list for the given dest and tag
-    pthread_mutex_lock(&free_list[tag][SEND][dest].mutex);
-
-    // Check size again
-    if (free_list[tag][SEND][dest].getNum() == 0) {
-        pthread_mutex_unlock(&free_list[tag][SEND][dest].mutex);
+    // Check size again, this time with the lock
+    free_list->lock();
+    if (free_list->getNum() == 0) {
+        free_list->unlock();
         return 0;
     }
 
-    // Pull the 1st list node from the free send list
-    ListNode *node = free_list[tag][SEND][dest].removeHead();
-    if (node == NULL) {
+    // Pull the first list node from the free send list
+    if ((node = free_list->removeHead()) == NULL) {
         printf("send_begin: pull node from list fail: tag %d, dest %d\n", tag, dest);
         exit(-1);
     }
-
-    // Unlock the 'free' send list
-    pthread_mutex_unlock(&free_list[tag][SEND][dest].mutex);
-
-    // Lock the corresponding 'busy' send list (the one for the same dest and tag)
-    pthread_mutex_lock(&busy_list[tag][SEND][dest].mutex);
+    free_list->unlock();
 
     // Move the node to the busy send list
     *db = node->db;
-    busy_list[tag][SEND][dest].list[db->data] = node;
-
-    // Unlock the 'busy' send list
-    pthread_mutex_unlock(&busy_list[tag][SEND][dest].mutex);
+    busy_list->lock();
+    busy_list->list[db->data] = node;
+    busy_list->unlock();
 
     return 1;
 }
 
 // Called by a worker thread when it is done filling a to-be-sent block
 void ConnectionLayer::send_end(DataBlock db, int dest, int tag) {
+    HashList *busy_list = &busy_lists[tag][SEND][dest];
     ListNode *node = NULL;
 
-    // Lock the 'busy' send list for the given dest and tag
-    pthread_mutex_lock(&busy_list[tag][SEND][dest].mutex);
-
     // Find the list node for that db on the 'busy' send list (based on the value of the data pointer)
-    unordered_map<void*, ListNode*>::const_iterator iter = busy_list[tag][SEND][dest].list.find(db.data);
-    if (iter != busy_list[tag][SEND][dest].list.end()) {
+    busy_list->lock();
+    unordered_map<void*, ListNode*>::const_iterator iter = busy_list->list.find(db.data);
+    if (iter != busy_list->list.end()) {
         node = iter->second;
         // Remove that list node from the 'busy' send list
-        busy_list[tag][SEND][dest].list.erase(db.data);
+        busy_list->list.erase(db.data);
     } else {
-        pthread_mutex_unlock(&busy_list[tag][SEND][dest].mutex);
+        busy_list->unlock();
         error("send_end: data pointer tampered!");
     }
-
-    // Unlock the 'busy' send list
-    pthread_mutex_unlock(&busy_list[tag][SEND][dest].mutex);
+    busy_list->unlock();
 
     // Copy data block into node (by value, since its just a pointer and size_t)
     node->db = db;
 
     if (dest == local_host) {
         // Local transfer: immediately move the node to the full receive list
-        // Lock the 'full' receive list for the given dest and tag
-        pthread_mutex_lock(&full_list[tag][RECV][dest].mutex);
-
         // Add that list node to the tail of the 'full' receive list
-        if (full_list[tag][RECV][dest].addTail(node) == -1) {
+        if (full_lists[tag][RECV][dest].addTailSafe(node) == -1) {
             printf("send_end: add node to list fail: tag %d, dest %d\n", tag, dest);
             exit(-1);
         }
-
-        // Unlock the 'full' receive list for the given dest and tag
-        pthread_mutex_unlock(&full_list[tag][RECV][dest].mutex);
     } else {
-        // Lock the 'full' send list for the given dest and tag
-        pthread_mutex_lock(&full_list[tag][SEND][dest].mutex);
-
         // Add that list node to the tail of the 'full' send list
-        if (full_list[tag][SEND][dest].addTail(node) == -1) {
+        if (full_lists[tag][SEND][dest].addTailSafe(node) == -1) {
             printf("send_end: add node to list fail: tag %d, dest %d\n", tag, dest);
             exit(-1);
         }
-
-        // Unlock the 'full' send list for the given dest and tag
-        pthread_mutex_unlock(&full_list[tag][SEND][dest].mutex);
     }
 }
 
@@ -427,10 +391,8 @@ void *ConnectionLayer::readFromSocket(void *param) {
     int conn_fd = p->conn;
 
     while (true) {
-        // Pull the 1st list node from the 'free' receive list
-        pthread_mutex_lock(&free_list[tag][RECV][src].mutex);
-        node = free_list[tag][RECV][src].removeHead();
-        pthread_mutex_unlock(&free_list[tag][RECV][src].mutex);
+        // Pull the first list node from the 'free' receive list
+        node = free_lists[tag][RECV][src].removeHeadSafe();
 
         if (node == NULL) {
             continue;
@@ -472,12 +434,10 @@ void *ConnectionLayer::readFromSocket(void *param) {
         }
 
         // Add the list node to the tail of the 'full' receive list
-        pthread_mutex_lock(&full_list[tag][RECV][src].mutex);
-        if (full_list[tag][RECV][src].addTail(node) == -1) {
+        if (full_lists[tag][RECV][src].addTailSafe(node) == -1) {
             printf("readFromSocket: add node to list fail: tag %d, src %d\n", tag, src);
             pthread_exit(NULL);
         }
-        pthread_mutex_unlock(&full_list[tag][RECV][src].mutex);
     }
 }
 
@@ -491,9 +451,7 @@ void *ConnectionLayer::writeToSocket(void *param) {
 
     while (true) {
         // Pull the 1st node from the 'full' send list
-        pthread_mutex_lock(&full_list[tag][SEND][dest].mutex);
-        node = full_list[tag][SEND][dest].removeHead();
-        pthread_mutex_unlock(&full_list[tag][SEND][dest].mutex);
+        node = full_lists[tag][SEND][dest].removeHeadSafe();
 
         if (node == NULL) {
             continue;
@@ -526,11 +484,9 @@ void *ConnectionLayer::writeToSocket(void *param) {
         }
 
         // Add the node to the tail of the 'free' send list
-        pthread_mutex_lock(&free_list[tag][SEND][dest].mutex);
-        if (free_list[tag][SEND][dest].addTail(node) == -1) {
+        if (free_lists[tag][SEND][dest].addTailSafe(node) == -1) {
             printf("writeToSocket: add node to list fail: tag %d, dest %d\n", tag, dest);
             pthread_exit(NULL);
         }
-        pthread_mutex_unlock(&free_list[tag][SEND][dest].mutex);
     }
 }

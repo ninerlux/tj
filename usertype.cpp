@@ -19,7 +19,17 @@ ListNode* List::removeHead() {
     }
 }
 
-int List::addTail(ListNode * node) {
+ListNode* List::removeHeadSafe() {
+    ListNode *node;
+
+    lock();
+    node = removeHead();
+    unlock();
+
+    return node;
+}
+
+int List::addTail(ListNode *node) {
     if (node != NULL) {
         node->next = tail;
         node->prev = tail->prev;
@@ -32,6 +42,16 @@ int List::addTail(ListNode * node) {
     } else {
         return -1;
     }
+}
+
+int List::addTailSafe(ListNode *node) {
+    int res;
+
+    lock();
+    res = addTail(node);
+    unlock();
+
+    return res;
 }
 
 int HashTable::add(record_r *r) {

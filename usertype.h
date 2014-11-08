@@ -81,8 +81,15 @@ public:
 
     pthread_mutex_t mutex;
 
+    void lock() { pthread_mutex_lock(&mutex); };
+    void unlock() { pthread_mutex_unlock(&mutex); };
+
     ListNode *removeHead();
     int addTail(ListNode *);
+    
+    ListNode *removeHeadSafe();
+    int addTailSafe(ListNode *);
+
     size_t getNum() {return num;}
 
 
@@ -107,6 +114,9 @@ public:
     unordered_map<void*, ListNode*> list;
     size_t num;
     pthread_mutex_t mutex;
+
+    void lock() { pthread_mutex_lock(&mutex); };
+    void unlock() { pthread_mutex_unlock(&mutex); };
 };
 
 class HashTable {
