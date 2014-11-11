@@ -33,13 +33,13 @@ static void *process_R(void *param) {
     int local_host = CL->get_local_host();
 
 	if (tag == 0) {
-		 DataBlock *dbs = new DataBlock[hosts];
+		DataBlock *dbs = new DataBlock[hosts];
 		// prepare data blocks for each destination
 		int dest;
 		for (dest = 0; dest < hosts; dest++) {
 			while (!CL->send_begin(&dbs[dest], dest, 1));
 		}
-       // Send each record in R to destination node
+        // Send each record in R to destination node
         for (int i = 0; i < R->num_records; i++) {
             // hash each record's join key to get destination node number
             // hash() is the hash function of hash table. It is like "key % p", where p is a very large prime
@@ -50,8 +50,8 @@ static void *process_R(void *param) {
 				fflush(stdout); 
 				while (!CL->send_begin(&dbs[dest], dest, 1));
 			}
-			memcpy((char *)dbs[dest].data + dbs[dest].size, &R->records[i], sizeof(record_r));
-			dbs[dest].size += sizeof(record_r);
+            *((record_r *)dbs[dest].data + dbs[dest].size / sizeof(record_r)) = R->records[i];
+            dbs[dest].size += sizeof(record_r);
 		}
         // Send last partially filled data blocks and end flags to all nodes
         for (dest = 0; dest < hosts; dest++) {
@@ -69,23 +69,23 @@ static void *process_R(void *param) {
 			fflush(stdout); 
 		}		
     } else if (tag == 1) {
-        // Receive until termination received from all nodes
         int src;
         record_r *r;
 		DataBlock db;
 
         int t = 0;
+        // Receive until termination received from all nodes
         while (t != hosts) {
             while (!CL->recv_begin(&db, &src, tag));
 			printf("R - Node %d received data block from node %d with size %lu\n", local_host, src, db.size);
 			fflush(stdout);
             if (db.size > 0) {
-				size_t bytes_copied = 0;
-				while (bytes_copied < db.size) { 
+				int records_copied = 0;
+				while (records_copied * sizeof(record_r) < db.size) { 
 					r = new record_r();
-					assert(bytes_copied + sizeof(record_r) <= db.size);
-					memcpy(r, (char *)db.data + bytes_copied, sizeof(record_r));
-					bytes_copied += sizeof(record_r);
+					assert((records_copied + 1) * sizeof(record_r) <= db.size);
+                    *r = *((record_r *)db.data + records_copied);
+					records_copied += 1;
 					//printf("R - Node %d received record_r (%u, %u) from node %d\n", local_host, r->k, r->p, src);
 					//fflush(stdout);
 					//Add the data to hash table
@@ -134,7 +134,7 @@ static void *process_S(void *param) {
 				fflush(stdout); 
 				while (!CL->send_begin(&dbs[dest], dest, 1));
 			}
-			memcpy((char *)dbs[dest].data + dbs[dest].size, &S->records[i], sizeof(record_s));
+			*((record_s *)dbs[dest].data + dbs[dest].size / sizeof(record_s)) = S->records[i];
 			dbs[dest].size += sizeof(record_s);
 		}
 		// Send last partially filled data blocks and end flags to all nodes
@@ -153,7 +153,6 @@ static void *process_S(void *param) {
 			fflush(stdout);
 		}    
 	} else if (tag == 1) {
-        // Receive until termination received from all nodes
         int src;
         record_s *s;
         record_r *r = NULL;
@@ -161,17 +160,18 @@ static void *process_S(void *param) {
 
         int t = 0;
 		int join_num = 0;
+        // Receive until termination received from all nodes
         while (t != hosts) {
             while (!CL->recv_begin(&db, &src, tag));
 			printf("S - Node %d received data block from node %d with size %lu\n", local_host, src, db.size);
 			fflush(stdout);
             if (db.size > 0) {
-				size_t bytes_copied = 0;
-				while (bytes_copied < db.size) {
+				size_t records_copied = 0;
+				while (records_copied * sizeof(record_s) < db.size) {
 					s = new record_s();
-					assert(bytes_copied + sizeof(record_s) <= db.size);	
-					memcpy(s, (char *)db.data + bytes_copied, sizeof(record_s));
-					bytes_copied += sizeof(record_s);
+					assert((records_copied + 1) * sizeof(record_s) <= db.size);	
+					*s = *((record_s *)db.data + records_copied);
+					records_copied += 1;
 					//printf("S - Node %d received record_s (%u, %u) from node %d with size %lu\n", local_host, s->k, s->p, src, db.size);
 					//fflush(stdout);
 					//Probe data in hash table

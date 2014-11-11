@@ -61,7 +61,7 @@ int HashTable::add(record_r *r) {
     while (true) {
         bool has_slot = false;
         do {
-            if (probe_slot(i)) {
+            if (table[i] == NULL) {
                 has_slot = true;
                 break;
             } else {
@@ -101,19 +101,10 @@ int HashTable::find(join_key_t k, int index, record_r **r) {
         if (i >= num) {
             i = 0;
         }
-    } while (i != hash_key);
+    } while (table[i] != NULL && i != hash_key);
 	
     return -1;
 }
-
-bool HashTable::probe_slot(int index) {
-    if (index >= 0 && index < num && table[index] == NULL) {
-        return true;
-    } else {
-        return false;
-    }
-}
-
 
 int HashTable::hash(join_key_t k) {
     //not a good function, to be changed
