@@ -60,14 +60,14 @@ int HashTable::hash(join_key_t k) {
     return k % 8999 % num;
 }
 
-int HashTable::add(record_r r) {
+int HashTable::add(record_r *r) {
     int hash_key = hash(r->k);
     int i = hash_key;
 
     while (true) {
         bool has_slot = false;
         do {
-            if (table[i].k == 0) {
+            if (table[i] == NULL) {
                 has_slot = true;
                 break;
             } else {
@@ -79,7 +79,7 @@ int HashTable::add(record_r r) {
         } while (i != hash_key);
 
         if (has_slot) {
-            bool success = __sync_bool_compare_and_swap(&table[i].k, 0, r);
+            bool success = __sync_bool_compare_and_swap(&table[i], NULL, r);
 			if (success) {
                 return i;
             }
@@ -89,7 +89,7 @@ int HashTable::add(record_r r) {
     }
 }
 
-int HashTable::find(join_key_t k, record_r *r, int index, size_t nr_results) {
+int HashTable::find(join_key_t k, int index, record_r **r) {
     int hash_key = hash(k);
     int i = hash_key;
 
@@ -98,7 +98,7 @@ int HashTable::find(join_key_t k, record_r *r, int index, size_t nr_results) {
 	}
 
     do {
-        if (table[i].k == k) {
+        if (table[i] != NULL && table[i]->k == k) {
             *r = table[i];
             return i;
         } else {
@@ -107,7 +107,7 @@ int HashTable::find(join_key_t k, record_r *r, int index, size_t nr_results) {
         if (i >= num) {
             i = 0;
         }
-    } while (table[i].k != 0 || i != hash_key);
+    } while (table[i] != NULL && i != hash_key);
 	
     return -1;
 }

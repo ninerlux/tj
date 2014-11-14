@@ -133,7 +133,7 @@ static void *receive_and_probe(void *param) {
 
     int src;
     record_s *s;
-    record_r r;
+    record_r *r = NULL;
     DataBlock db;
 
     int t = 0;
@@ -152,15 +152,15 @@ static void *receive_and_probe(void *param) {
                 records_copied += 1;
                 //Probe data in hash table
                 int ret = -2;        //set 1st time starting searching index (ret + 1) as -1.
-                while ((ret = h_table->find(s->k, &r, ret + 1, 100000)) >= 0) {
+                while ((ret = h_table->find(s->k, ret + 1, &r)) >= 0) {
 					//Validate key-value mapping for r and s
 					bool valid = false;
-					if (s->k == r.k && payload_to_key<r_payload_t>(r.p, 1 / 131) == payload_to_key<s_payload_t>(s->p, 1 / 181)) {
+					if (s->k == r->k && payload_to_key<r_payload_t>(r->p, 1 / 131) == payload_to_key<s_payload_t>(s->p, 1 / 181)) {
 						valid = true;
 					}
                     //Output joined tuples
                     printf("Join Result: Node %d #%d, join_key %u payload_r %u, payload_s %u %s\n", local_host, ++join_num,
-                            s->k, r.p, s->p, valid ? "correct" : "incorrect");
+                            s->k, r->p, s->p, valid ? "correct" : "incorrect");
                     fflush(stdout);
                 }
             }
