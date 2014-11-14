@@ -41,7 +41,7 @@ join_key_t index_to_key(int i) {
 	//return i % 100000;
 	int rand;
 	while ((rand = (int)random()) == 0);
-	return rand % 100000;
+	return rand % 100000 + 1;
 }
 
 template <typename payload_t>
@@ -77,6 +77,7 @@ void create_table(table_r &R, long r_bytes, table_s &S, long s_bytes) {
 
 	for (i = 0; i < R.num_records; i++) {
         R.records[i].k = index_to_key(i);
+		assert(R.records[i].k != 0);
 		R.records[i].p = key_to_payload<r_payload_t>(R.records[i].k, 131);
 		//printf("cR: k %u, p %u \n", R.records[i].k, R.records[i].p);
    }
@@ -93,6 +94,7 @@ void create_table(table_r &R, long r_bytes, table_s &S, long s_bytes) {
 
 	for (j = 0; j < S.num_records; j++) {
 		S.records[j].k = index_to_key(j % R.num_records);
+		assert(S.records[i].k != 0);
 		S.records[j].p = key_to_payload<s_payload_t>(S.records[j].k, 181);
 		//printf("cS: k %u, p %u \n", S.records[j].k, S.records[j].p);
  } 

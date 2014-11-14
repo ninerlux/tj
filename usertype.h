@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <stdint.h>
 #include <unordered_map>
+#include <assert.h>
 
 #define MAX_TAG 3
 #define MAX_NODES 255
@@ -124,15 +125,18 @@ public:
     //local HashTable for hash join
     //The HashTable stores keys and payloads in table R
     HashTable(size_t size, float ld = 0.75) : num(size), load_factor(ld) {
-        table = new record_r *[num];
+        table = new record_r[num];
+		for (int i = 0; i < num; i++) {
+			assert(table[num].k == 0 && table[num].p.bytes[0] == 0 && table[num].p.bytes[1] == 0 && table[num].p.bytes[2] == 0 && table[num].p.bytes[3] == 0 );
+		}
     };
 
     int hash(join_key_t k);
-    int add(record_r *r);
-    int find(join_key_t k, int index, record_r **r);	//index: starting searching index
+    int add(record_r r);
+    int find(join_key_t k, record_r *r, int index, size_t nr_results);	//index: starting searching index
     int num;
     float load_factor;  // hash table need to consider load factor to grow
-    record_r **table;
+    record_r *table;
 };
 
 struct msg {
