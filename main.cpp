@@ -92,7 +92,10 @@ struct table_s create_table_s(long bytes) {
 */
 
 join_key_t index_to_key(int i) {
-	return i % 100000;
+	//return i % 100000;
+	int rand;
+	while ((rand = (int)random()) == 0);
+	return rand % 100000;
 }
 
 void create_table(table_r &R, long r_bytes, table_s &S, long s_bytes) {

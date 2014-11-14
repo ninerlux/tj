@@ -55,23 +55,38 @@ int List::addTailSafe(ListNode *node) {
     return res;
 }
 
-template <typename payload_t>
-payload_t join_table<payload_t>::key_to_payload(join_key_t k) {
+r_payload_t table_r::key_to_payload(join_key_t k) {
 	float a = 181;
-	payload_t p;
+	r_payload_t p;
 	uint32_t res = (uint32_t)(a * k);
-	memcpy(&p, &res, sizeof(payload_t)); 
+	memcpy(&p, &res, sizeof(r_payload_t)); 
 	return p; 
 }
 
-template <typename payload_t>
-join_key_t join_table<payload_t>::payload_to_key(payload_t p) {
+join_key_t table_r::payload_to_key(r_payload_t p) {
 	float b = 1 / 181;
 	uint32_t payload;
-	memcpy(&payload, &p, sizeof(payload_t));
+	memcpy(&payload, &p, sizeof(r_payload_t));
 	join_key_t k = (join_key_t)(b * payload);
 	return k;
 }
+
+s_payload_t table_s::key_to_payload(join_key_t k) {
+	float a = 131;
+	s_payload_t p;
+	uint32_t res = (uint32_t)(a * k);
+	memcpy(&p, &res, sizeof(s_payload_t)); 
+	return p; 
+}
+
+join_key_t table_s::payload_to_key(s_payload_t p) {
+	float b = 1 / 131;
+	uint32_t payload;
+	memcpy(&payload, &p, sizeof(s_payload_t));
+	join_key_t k = (join_key_t)(b * payload);
+	return k;
+}
+
 
 int HashTable::hash(join_key_t k) {
     //not a good function, to be changed
