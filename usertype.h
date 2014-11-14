@@ -32,24 +32,16 @@ struct record_s {
     s_payload_t p;
 };
 
-class join_table {
-public:
+struct table_r {
+    record_r *records;
 	int num_bytes;
 	int num_records;
 };
 
-class table_r : public join_table {
-public:
-    record_r *records;
-	r_payload_t key_to_payload(join_key_t k);
-	join_key_t payload_to_key(r_payload_t p);
-};
-
-class table_s : public join_table {
-public:
+struct table_s {
     record_s *records;
-	s_payload_t key_to_payload(join_key_t k);
-	join_key_t payload_to_key(s_payload_t p);
+	int num_bytes;
+	int num_records;
 };
 
 struct DataBlock {

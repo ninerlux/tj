@@ -37,66 +37,30 @@ void printListBackward(ListNode *tail) {
     printf("\n");
 }
 
-/*
-struct table_r create_table_r(long bytes) {
-    int i, j;
-    int rand;
-    struct table_r R;
-    R.num_bytes = bytes;
-    R.num_records = bytes / sizeof(record_r);
-
-	R.records = (struct record_r *) malloc(bytes);
-	if (R.records == NULL) {
-		error("malloc failed");
-	}
-
-	printf("Create R: num of records = %d\n", R.num_records);
-
-	for (i = 0; i < R.num_records; i++) {
-		while ((rand = (int) random()) == 0);
-      
-        R.records[i].k = (join_key_t) rand % 100000;
-        for (j = 0; j < BYTES_PAYLOAD_R; j++) {
-            R.records[i].p.bytes[j] = ((uint8_t) random()) + 1;
-        }
-    }
-
-    return R;
-}
-
-struct table_s create_table_s(long bytes) {
-    int i, j;
-    int rand;
-    struct table_s S;
-    S.num_bytes = bytes;
-    S.num_records = bytes / sizeof(record_s);
-
-	printf("Create S: num of records = %d\n", S.num_records);
-
-	S.records = (struct record_s *) malloc(bytes);
-	if (S.records == NULL) {
-		error("malloc failed");
-	}
-
-    for (i = 0; i < S.num_records; i++) {
-        while ((rand = (int) random()) == 0);
-      
-        S.records[i].k = (join_key_t) rand % 100000;
-        for (j = 0; j < BYTES_PAYLOAD_S; j++) {
-            S.records[i].p.bytes[j] = ((uint8_t) random()) + 1;
-        }
-    }
-
-    return S;
-}
-*/
-
 join_key_t index_to_key(int i) {
 	//return i % 100000;
 	int rand;
 	while ((rand = (int)random()) == 0);
 	return rand % 100000;
 }
+
+template <typename payload_t>
+payload_t key_to_payload(join_key_t k, float a) {
+	payload_t p;
+	uint32_t res = (uint32_t) (a * k);
+	memcpy(&p, &res, sizeof(payload_t));
+	return p;
+}
+
+/*
+template <typename payload_t>
+join_key_t payload_to_key(payload_t p, float b) {
+	uint32_t payload;
+	memcpy(&payload, &p, sizeof(payload_t));
+	join_key_t k = (join_key_t) (b * payload);
+	return k;
+}
+*/
 
 void create_table(table_r &R, long r_bytes, table_s &S, long s_bytes) {
 	int i, j;
@@ -113,8 +77,9 @@ void create_table(table_r &R, long r_bytes, table_s &S, long s_bytes) {
 
 	for (i = 0; i < R.num_records; i++) {
         R.records[i].k = index_to_key(i);
-		R.records[i].p = R.key_to_payload(R.records[i].k);
-    }
+		R.records[i].p = key_to_payload<r_payload_t>(R.records[i].k, 131);
+		//printf("cR: k %u, p %u \n", R.records[i].k, R.records[i].p);
+   }
 
 	S.num_bytes = s_bytes;
 	S.num_records = s_bytes / sizeof(record_s);
@@ -128,8 +93,9 @@ void create_table(table_r &R, long r_bytes, table_s &S, long s_bytes) {
 
 	for (j = 0; j < S.num_records; j++) {
 		S.records[j].k = index_to_key(j % R.num_records);
-		S.records[j].p = S.key_to_payload(S.records[j].k);
-	} 
+		S.records[j].p = key_to_payload<s_payload_t>(S.records[j].k, 181);
+		//printf("cS: k %u, p %u \n", S.records[j].k, S.records[j].p);
+ } 
 }
 
 int main(int argc, char** argv) {
@@ -147,8 +113,6 @@ int main(int argc, char** argv) {
 
     AbstractAlgo *algo;
 
-    //struct table_r R = create_table_r(atol(argv[2]) * 1024  );
-    //struct table_s S = create_table_s(atol(argv[2]) * 1024   * atol(argv[3]));
 	struct table_r R;
 	struct table_s S;
 

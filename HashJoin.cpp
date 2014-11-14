@@ -32,7 +32,7 @@ static void *scan_and_send(void *param) {
     HashTable *h_table = p->h;
 
     int hosts = CL->get_hosts();
-    //int local_host = CL->get_local_host();
+    int local_host = CL->get_local_host();
 
     DataBlock *dbs = new DataBlock[hosts];
     // prepare data blocks for each destination
@@ -47,8 +47,8 @@ static void *scan_and_send(void *param) {
         dest = h_table->hash(T->records[i].k) % hosts;
         if (dbs[dest].size + sizeof(Record) > BLOCK_SIZE) {
             CL->send_end(dbs[dest], dest, 1);
-            //printf("Scan - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
-            //fflush(stdout);
+            printf("Scan - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
+            fflush(stdout);
             while (!CL->send_begin(&dbs[dest], dest, 1));
         }
         *((Record *) dbs[dest].data + dbs[dest].size / sizeof(Record)) = T->records[i];
@@ -59,15 +59,15 @@ static void *scan_and_send(void *param) {
         // Send last data blocks
         if (dbs[dest].size > 0) {
             CL->send_end(dbs[dest], dest, 1);
-            //printf("Scan - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
-            //fflush(stdout);
+            printf("Scan - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
+            fflush(stdout);
         }
         // Send end flags
         while (!CL->send_begin(&dbs[dest], dest, 1));
         dbs[dest].size = 0;
         CL->send_end(dbs[dest], dest, 1);
-        //printf("Scan - Node %d send end flag node %d with size %lu\n", local_host, dest, dbs[dest].size);
-        //fflush(stdout);
+        printf("Scan - Node %d send end flag node %d with size %lu\n", local_host, dest, dbs[dest].size);
+        fflush(stdout);
     }
 
     return NULL;
@@ -98,8 +98,6 @@ static void *receive_and_build(void *param) {
                 assert((records_copied + 1) * sizeof(record_r) <= db.size);
                 *r = *((record_r *) db.data + records_copied);
                 records_copied += 1;
-                //printf("R - Node %d received record_r (%u, %u) from node %d\n", local_host, r->k, r->p, src);
-                //fflush(stdout);
                 //Add the data to hash table
                 int ret;
                 if ((ret = h_table->add(r)) < 0) {
@@ -115,6 +113,14 @@ static void *receive_and_build(void *param) {
     }
 
     return NULL;
+}
+
+template <typename payload_t>
+join_key_t payload_to_key(payload_t p, float b) {
+	uint32_t payload;
+	memcpy(&payload, &p, sizeof(payload_t));
+	join_key_t k = (join_key_t) (b * payload);
+	return k;
 }
 
 static void *receive_and_probe(void *param) {
@@ -144,14 +150,17 @@ static void *receive_and_probe(void *param) {
                 assert((records_copied + 1) * sizeof(record_s) <= db.size);
                 *s = *((record_s *) db.data + records_copied);
                 records_copied += 1;
-                //printf("S - Node %d received record_s (%u, %u) from node %d with size %lu\n", local_host, s->k, s->p, src, db.size);
-                //fflush(stdout);
                 //Probe data in hash table
                 int ret = -2;        //set 1st time starting searching index (ret + 1) as -1.
                 while ((ret = h_table->find(s->k, ret + 1, &r)) >= 0) {
+					//Validate key-value mapping for r and s
+					bool valid = false;
+					if (s->k == r->k && payload_to_key<r_payload_t>(r->p, 1 / 131) == payload_to_key<s_payload_t>(s->p, 1 / 181)) {
+						valid = true;
+					}
                     //Output joined tuples
-                    printf("Join Result: Node %d #%d, join_key %u payload_r %u, payload_s %u\n", local_host, ++join_num,
-                            s->k, r->p, s->p);
+                    printf("Join Result: Node %d #%d, join_key %u payload_r %u, payload_s %u %s\n", local_host, ++join_num,
+                            s->k, r->p, s->p, valid ? "correct" : "incorrect");
                     fflush(stdout);
                 }
             }

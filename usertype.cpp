@@ -55,39 +55,6 @@ int List::addTailSafe(ListNode *node) {
     return res;
 }
 
-r_payload_t table_r::key_to_payload(join_key_t k) {
-	float a = 181;
-	r_payload_t p;
-	uint32_t res = (uint32_t)(a * k);
-	memcpy(&p, &res, sizeof(r_payload_t)); 
-	return p; 
-}
-
-join_key_t table_r::payload_to_key(r_payload_t p) {
-	float b = 1 / 181;
-	uint32_t payload;
-	memcpy(&payload, &p, sizeof(r_payload_t));
-	join_key_t k = (join_key_t)(b * payload);
-	return k;
-}
-
-s_payload_t table_s::key_to_payload(join_key_t k) {
-	float a = 131;
-	s_payload_t p;
-	uint32_t res = (uint32_t)(a * k);
-	memcpy(&p, &res, sizeof(s_payload_t)); 
-	return p; 
-}
-
-join_key_t table_s::payload_to_key(s_payload_t p) {
-	float b = 1 / 131;
-	uint32_t payload;
-	memcpy(&payload, &p, sizeof(s_payload_t));
-	join_key_t k = (join_key_t)(b * payload);
-	return k;
-}
-
-
 int HashTable::hash(join_key_t k) {
     //not a good function, to be changed
     return k % 8999 % num;
