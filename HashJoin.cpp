@@ -44,7 +44,7 @@ static void *scan_and_send(void *param) {
     for (int i = 0; i < T->num_records; i++) {
         // hash each record's join key to get destination node number
         // hash() is the hash function of hash table. It is like "key % p", where p is a very large prime
-        dest = h_table->hash(T->records[i].k) % hosts;
+        dest = h_table->hash32(T->records[i].k) % hosts;
         if (dbs[dest].size + sizeof(Record) > BLOCK_SIZE) {
             CL->send_end(dbs[dest], dest, 1);
             printf("Scan - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
@@ -151,8 +151,8 @@ static void *receive_and_probe(void *param) {
                 *s = *((record_s *) db.data + records_copied);
                 records_copied += 1;
                 //Probe data in hash table
-                int ret = -2;        //set 1st time starting searching index (ret + 1) as -1.
-                while ((ret = h_table->find(s->k, ret + 1, &r)) >= 0) {
+                int ret = h_table->getNum() - 1;        //set 1st time starting searching index (ret + 1) as table size.
+                while ((ret = h_table->find(s->k, &r, ret + 1, 10)) >= 0) {
 					//Validate key-value mapping for r and s
 					bool valid = false;
 					if (s->k == r->k && payload_to_key<r_payload_t>(r->p, 1 / 131) == payload_to_key<s_payload_t>(s->p, 1 / 181)) {

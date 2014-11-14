@@ -123,15 +123,19 @@ class HashTable {
 public:
     //local HashTable for hash join
     //The HashTable stores keys and payloads in table R
-    HashTable(size_t size, float ld = 0.75) : num(size), load_factor(ld) {
+    HashTable(size_t size) : num(size) {
         table = new record_r *[num];
+		hash32_factor = 79;
     };
 
-    int hash(join_key_t k);
+    size_t hash32(join_key_t k);
     int add(record_r *r);
-    int find(join_key_t k, int index, record_r **r);	//index: starting searching index
-    int num;
-    float load_factor;  // hash table need to consider load factor to grow
+    int find(join_key_t k, record_r **r, size_t index, size_t nr_results);	//index: starting searching index
+	size_t getNum() {return num;}
+
+private:
+	size_t hash32_factor;
+    size_t num;
     record_r **table;
 };
 

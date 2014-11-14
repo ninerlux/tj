@@ -1,6 +1,7 @@
 #include "usertype.h"
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 #include <atomic>
 
 ListNode* List::removeHead() {
@@ -55,14 +56,18 @@ int List::addTailSafe(ListNode *node) {
     return res;
 }
 
-int HashTable::hash(join_key_t k) {
+size_t HashTable::hash32(join_key_t k) {
     //not a good function, to be changed
-    return k % 8999 % num;
+    //return k % 8999 % num;
+	uint64_t hash = (uint32_t) (k * hash32_factor);
+	size_t res = (hash * num) >> 32;
+	assert(res >= 0 && res < num);
+	return res;
 }
 
 int HashTable::add(record_r *r) {
-    int hash_key = hash(r->k);
-    int i = hash_key;
+    size_t hash_key = hash32(r->k);
+    size_t i = hash_key;
 
     while (true) {
         bool has_slot = false;
@@ -89,11 +94,11 @@ int HashTable::add(record_r *r) {
     }
 }
 
-int HashTable::find(join_key_t k, int index, record_r **r) {
-    int hash_key = hash(k);
-    int i = hash_key;
+int HashTable::find(join_key_t k, record_r **r, size_t index, size_t nr_results) {
+    size_t hash_key = hash32(k);
+    size_t i = hash_key;
 
-	if (index != -1) {
+	if (index < num) {
 		i = index;
 	}
 
