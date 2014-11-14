@@ -1,5 +1,6 @@
 #include "usertype.h"
 #include <stdio.h>
+#include <string.h>
 #include <atomic>
 
 ListNode* List::removeHead() {
@@ -54,6 +55,29 @@ int List::addTailSafe(ListNode *node) {
     return res;
 }
 
+template <typename payload_t>
+payload_t join_table<payload_t>::key_to_payload(join_key_t k) {
+	float a = 181;
+	payload_t p;
+	uint32_t res = (uint32_t)(a * k);
+	memcpy(&p, &res, sizeof(payload_t)); 
+	return p; 
+}
+
+template <typename payload_t>
+join_key_t join_table<payload_t>::payload_to_key(payload_t p) {
+	float b = 1 / 181;
+	uint32_t payload;
+	memcpy(&payload, &p, sizeof(payload_t));
+	join_key_t k = (join_key_t)(b * payload);
+	return k;
+}
+
+int HashTable::hash(join_key_t k) {
+    //not a good function, to be changed
+    return k % 8999 % num;
+}
+
 int HashTable::add(record_r *r) {
     int hash_key = hash(r->k);
     int i = hash_key;
@@ -106,7 +130,4 @@ int HashTable::find(join_key_t k, int index, record_r **r) {
     return -1;
 }
 
-int HashTable::hash(join_key_t k) {
-    //not a good function, to be changed
-    return k % 8999 % num;
-}
+

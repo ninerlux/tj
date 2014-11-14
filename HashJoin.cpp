@@ -32,7 +32,7 @@ static void *scan_and_send(void *param) {
     HashTable *h_table = p->h;
 
     int hosts = CL->get_hosts();
-    int local_host = CL->get_local_host();
+    //int local_host = CL->get_local_host();
 
     DataBlock *dbs = new DataBlock[hosts];
     // prepare data blocks for each destination
@@ -47,8 +47,8 @@ static void *scan_and_send(void *param) {
         dest = h_table->hash(T->records[i].k) % hosts;
         if (dbs[dest].size + sizeof(Record) > BLOCK_SIZE) {
             CL->send_end(dbs[dest], dest, 1);
-            printf("Scan - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
-            fflush(stdout);
+            //printf("Scan - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
+            //fflush(stdout);
             while (!CL->send_begin(&dbs[dest], dest, 1));
         }
         *((Record *) dbs[dest].data + dbs[dest].size / sizeof(Record)) = T->records[i];
@@ -59,15 +59,15 @@ static void *scan_and_send(void *param) {
         // Send last data blocks
         if (dbs[dest].size > 0) {
             CL->send_end(dbs[dest], dest, 1);
-            printf("Scan - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
-            fflush(stdout);
+            //printf("Scan - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
+            //fflush(stdout);
         }
         // Send end flags
         while (!CL->send_begin(&dbs[dest], dest, 1));
         dbs[dest].size = 0;
         CL->send_end(dbs[dest], dest, 1);
-        printf("Scan - Node %d send end flag node %d with size %lu\n", local_host, dest, dbs[dest].size);
-        fflush(stdout);
+        //printf("Scan - Node %d send end flag node %d with size %lu\n", local_host, dest, dbs[dest].size);
+        //fflush(stdout);
     }
 
     return NULL;

@@ -37,6 +37,7 @@ void printListBackward(ListNode *tail) {
     printf("\n");
 }
 
+/*
 struct table_r create_table_r(long bytes) {
     int i, j;
     int rand;
@@ -88,7 +89,45 @@ struct table_s create_table_s(long bytes) {
 
     return S;
 }
+*/
 
+join_key_t index_to_key(int i) {
+	return i % 100000;
+}
+
+void create_table(table_r &R, long r_bytes, table_s &S, long s_bytes) {
+	int i, j;
+
+    R.num_bytes = r_bytes;
+    R.num_records = r_bytes / sizeof(record_r);
+
+	printf("Create R: num of records = %d\n", R.num_records);
+
+	R.records = (struct record_r *) malloc(r_bytes);
+	if (R.records == NULL) {
+		error("malloc R failed");
+	}
+
+	for (i = 0; i < R.num_records; i++) {
+        R.records[i].k = index_to_key(i);
+		R.records[i].p = R.key_to_payload(R.records[i].k);
+    }
+
+	S.num_bytes = s_bytes;
+	S.num_records = s_bytes / sizeof(record_s);
+
+	printf("Create S: num of records = %d\n", S.num_records);
+
+	S.records = (struct record_s *) malloc(s_bytes);
+	if (S.records == NULL) {
+		error("malloc S failed");
+	}
+
+	for (j = 0; j < S.num_records; j++) {
+		S.records[j].k = index_to_key(j % R.num_records);
+		S.records[j].p = S.key_to_payload(S.records[j].k);
+	} 
+}
 
 int main(int argc, char** argv) {
     if (argc != 4) {
@@ -105,8 +144,12 @@ int main(int argc, char** argv) {
 
     AbstractAlgo *algo;
 
-    struct table_r R = create_table_r(atol(argv[2]) * 1024  );
-    struct table_s S = create_table_s(atol(argv[2]) * 1024   * atol(argv[3]));
+    //struct table_r R = create_table_r(atol(argv[2]) * 1024  );
+    //struct table_s S = create_table_s(atol(argv[2]) * 1024   * atol(argv[3]));
+	struct table_r R;
+	struct table_s S;
+
+	create_table(R, atol(argv[2]) * 1024, S, atol(argv[2]) * 1024 * atol(argv[3]));
 
     if (strcmp(code, "test") == 0) {
         algo = new ProducerConsumer();
@@ -122,7 +165,6 @@ int main(int argc, char** argv) {
     CL = new ConnectionLayer(conf, domain, tags);
 
     algo->run(CL, &R, &S);
-
 
     free(R.records);
     free(S.records);

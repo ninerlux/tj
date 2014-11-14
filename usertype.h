@@ -32,16 +32,24 @@ struct record_s {
     s_payload_t p;
 };
 
-struct table_r {
-    record_r *records;
-    int num_bytes;
-    int num_records;
+template <typename payload_t>
+class join_table {
+public:
+	int num_bytes;
+	int num_records;
+	
+	payload_t key_to_payload(join_key_t k);
+	join_key_t payload_to_key(payload_t p);
 };
 
-struct table_s {
+class table_r : public join_table<r_payload_t> {
+public:
+    record_r *records;
+};
+
+class table_s : public join_table<s_payload_t> {
+public:
     record_s *records;
-    int num_bytes;
-    int num_records;
 };
 
 struct DataBlock {
@@ -130,8 +138,6 @@ public:
     int hash(join_key_t k);
     int add(record_r *r);
     int find(join_key_t k, int index, record_r **r);	//index: starting searching index
-    bool probe_slot(int index);
-
     int num;
     float load_factor;  // hash table need to consider load factor to grow
     record_r **table;
