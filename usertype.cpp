@@ -37,6 +37,7 @@ int List::addTail(ListNode *node) {
         node->prev = tail->prev;
         tail->prev->next = node;
         tail->prev = node;
+		node->db.size = 0;
 
         num++;
 

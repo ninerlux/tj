@@ -50,14 +50,17 @@ static void *scan_and_send(void *param) {
             printf("Scan - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
             fflush(stdout);
             while (!CL->send_begin(&dbs[dest], dest, 1));
+			assert(dbs[dest].size == 0);
         }
         *((Record *) dbs[dest].data + dbs[dest].size / sizeof(Record)) = T->records[i];
         dbs[dest].size += sizeof(Record);
+		assert(dbs[dest].size <= BLOCK_SIZE);
     }
     // Send last partially filled data blocks and end flags to all nodes
     for (dest = 0; dest < hosts; dest++) {
         // Send last data blocks
         if (dbs[dest].size > 0) {
+			assert(dbs[dest].size <= BLOCK_SIZE);
             CL->send_end(dbs[dest], dest, 1);
             printf("Scan - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
             fflush(stdout);
@@ -91,6 +94,7 @@ static void *receive_and_build(void *param) {
         while (!CL->recv_begin(&db, &src, 1));
         printf("R - Node %d received data block from node %d with size %lu\n", local_host, src, db.size);
         fflush(stdout);
+		assert(db.size <= BLOCK_SIZE);
         if (db.size > 0) {
             int records_copied = 0;
             while (records_copied * sizeof(record_r) < db.size) {
@@ -143,6 +147,7 @@ static void *receive_and_probe(void *param) {
         while (!CL->recv_begin(&db, &src, 1));
         printf("S - Node %d received data block from node %d with size %lu\n", local_host, src, db.size);
         fflush(stdout);
+		assert(db.size <= BLOCK_SIZE);
         if (db.size > 0) {
             size_t records_copied = 0;
             while (records_copied * sizeof(record_s) < db.size) {
@@ -182,7 +187,7 @@ int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
     worker_threads = new pthread_t[32];
 
     //create HashTable h_table
-    HashTable *h_table = new HashTable(HASH_TABLE_SIZE);
+    HashTable *h_table = new HashTable(R->num_records / 3 / 0.75);
 
     //start table R scan_and_send
     worker_param<table_r> *param_r = new worker_param<table_r>();
