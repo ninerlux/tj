@@ -35,19 +35,19 @@ int List::addTail(ListNode * node) {
 }
 
 int HashTable::add(record_r *r) {
-    int hash_key = hash(r->k);
-    int i = hash_key;
+    size_t hash_key = hash(r->k);
+    size_t i = hash_key;
 
     while (true) {
-        bool has_slot = false;
+		bool has_slot = false;
         do {
-            if (probe_slot(i)) {
+            if (table[i] == NULL) {
                 has_slot = true;
-                break;
+				break;
             } else {
                 i++;
             }
-            if (i >= num) {
+            if (i == num) {
                 i = 0;
             }
         } while (i != hash_key);
@@ -58,14 +58,16 @@ int HashTable::add(record_r *r) {
                 return i;
             }
         } else {
+			printf("hash table full !!! size = %lu \n", num);
+			fflush(stdout);
             return -1;
         }
     }
 }
 
 int HashTable::find(join_key_t k, int index, record_r **r) {
-    int hash_key = hash(k);
-    int i = hash_key;
+    size_t hash_key = hash(k);
+    size_t i = hash_key;
 
 	if (index != -1) {
 		i = index;
@@ -78,24 +80,15 @@ int HashTable::find(join_key_t k, int index, record_r **r) {
         } else {
             i++;
         }
-        if (i >= num) {
+        if (i == num) {
             i = 0;
         }
-    } while (i != hash_key);
+    } while (table[i] != NULL && i != hash_key);
 	
     return -1;
 }
 
-bool HashTable::probe_slot(int index) {
-    if (index >= 0 && index < num && table[index] == NULL) {
-        return true;
-    } else {
-        return false;
-    }
-}
-
-
-int HashTable::hash(join_key_t k) {
+size_t HashTable::hash(join_key_t k) {
     //not a good function, to be changed
     return k % 8999 % num;
 }

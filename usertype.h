@@ -11,7 +11,7 @@
 
 #define BLOCK_SIZE 4096
 #define BUFFER_SIZE 4096 	//set BUFFER_SIZE equal to BLOCK_SIZE to read one block of data each time
-#define MAX_BLOCKS_PER_LIST 100 // Number of blocks initially allocated to the free list
+#define MAX_BLOCKS_PER_LIST 100000 // Number of blocks initially allocated to the free list
 
 #define BYTES_PAYLOAD_R 4
 #define BYTES_PAYLOAD_S 4
@@ -117,12 +117,11 @@ public:
         table = new record_r *[num];
     };
 
-    int hash(join_key_t k);
+    size_t hash(join_key_t k);
     int add(record_r *r);
     int find(join_key_t k, int index, record_r **r);	//index: starting searching index
-    bool probe_slot(int index);
 
-    int num;
+    size_t num;
     float load_factor;  // hash table need to consider load factor to grow
     record_r **table;
 };

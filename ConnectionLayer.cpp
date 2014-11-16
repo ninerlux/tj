@@ -290,6 +290,7 @@ void ConnectionLayer::recv_end(DataBlock db, int src, int tag) {
         // Lock the 'free' send list for the given src and tag
         pthread_mutex_lock(&free_list[tag][SEND][src].mutex);
 
+		node->db.size = 0;
         // Add that list node to the tail of the 'free' send list
         if (free_list[tag][SEND][src].addTail(node) == -1) {
             printf("recv_end: add node to list fail: tag %d, src %d\n", tag, src);
@@ -302,6 +303,7 @@ void ConnectionLayer::recv_end(DataBlock db, int src, int tag) {
         // Lock the 'free' receive list for the given src and tag
         pthread_mutex_lock(&free_list[tag][RECV][src].mutex);
 
+		node->db.size = 0;
         // Add that list node to the tail of the 'free' receive list
         if (free_list[tag][RECV][src].addTail(node) == -1) {
             printf("recv_end: add node to list fail: tag %d, src %d\n", tag, src);
@@ -527,6 +529,7 @@ void *ConnectionLayer::writeToSocket(void *param) {
 
         // Add the node to the tail of the 'free' send list
         pthread_mutex_lock(&free_list[tag][SEND][dest].mutex);
+		node->db.size = 0;
         if (free_list[tag][SEND][dest].addTail(node) == -1) {
             printf("writeToSocket: add node to list fail: tag %d, dest %d\n", tag, dest);
             pthread_exit(NULL);
