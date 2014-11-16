@@ -51,7 +51,12 @@ static void *process_R(void *param) {
 				while (!CL->send_begin(&dbs[dest], dest, 1));
 			}
 			memcpy((char *)dbs[dest].data + dbs[dest].size, &R->records[i], sizeof(record_r));
+			//*((record_r *)dbs[dest].data + dbs[dest].size / sizeof(record_r)) = R->records[i];
 			dbs[dest].size += sizeof(record_r);
+			if (dbs[dest].size > BLOCK_SIZE) {
+				printf("R1 - overflow!!!\n");
+				sleep(5);
+			}
 		}
         // Send last partially filled data blocks and end flags to all nodes
         for (dest = 0; dest < hosts; dest++) {
@@ -60,7 +65,11 @@ static void *process_R(void *param) {
 				CL->send_end(dbs[dest], dest, 1);
 				printf("R2 - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
 				fflush(stdout); 
-			}		
+			}
+			if (dbs[dest].size > BLOCK_SIZE) {
+	             printf("R2 - overflow!!!\n");
+	             sleep(5);
+ 	        }			
 			// Send end flags
             while (!CL->send_begin(&dbs[dest], dest, 1));
             dbs[dest].size = 0;
@@ -79,12 +88,17 @@ static void *process_R(void *param) {
             while (!CL->recv_begin(&db, &src, tag));
 			printf("R - Node %d received data block from node %d with size %lu\n", local_host, src, db.size);
 			fflush(stdout);
+			if (db.size > BLOCK_SIZE) {
+                printf("R - receive overflow!!!\n");
+                sleep(5);
+            }
             if (db.size > 0) {
 				size_t bytes_copied = 0;
 				while (bytes_copied < db.size) { 
 					r = new record_r();
 					assert(bytes_copied + sizeof(record_r) <= db.size);
 					memcpy(r, (char *)db.data + bytes_copied, sizeof(record_r));
+					//*r = *((record_r *)db.data + bytes_copied / sizeof(record_r));
 					bytes_copied += sizeof(record_r);
 					//printf("R - Node %d received record_r (%u, %u) from node %d\n", local_host, r->k, r->p, src);
 					//fflush(stdout);
@@ -133,9 +147,18 @@ static void *process_S(void *param) {
 				printf("S1 - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
 				fflush(stdout); 
 				while (!CL->send_begin(&dbs[dest], dest, 1));
+				if (dbs[dest].size + sizeof(record_s) > BLOCK_SIZE) {
+                	printf("S1 - already overflow!!!, size %lu\n", dbs[dest].size);
+                 	sleep(5);
+            	}
 			}
 			memcpy((char *)dbs[dest].data + dbs[dest].size, &S->records[i], sizeof(record_s));
+			//*((record_s *)dbs[dest].data + dbs[dest].size / sizeof(record_s)) = S->records[i];
 			dbs[dest].size += sizeof(record_s);
+			if (dbs[dest].size > BLOCK_SIZE) {
+                 printf("S1 - overflow!!!\n");
+                 sleep(5);
+            }
 		}
 		// Send last partially filled data blocks and end flags to all nodes
 		for (dest = 0; dest < hosts; dest++) {
@@ -145,6 +168,10 @@ static void *process_S(void *param) {
 				printf("S2 - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
 				fflush(stdout);
 			}
+			if (dbs[dest].size > BLOCK_SIZE) {
+                printf("S2 - overflow!!!\n");
+                sleep(5);
+            }
 			// Send end flags
 			while (!CL->send_begin(&dbs[dest], dest, 1));
 			dbs[dest].size = 0;
@@ -165,12 +192,17 @@ static void *process_S(void *param) {
             while (!CL->recv_begin(&db, &src, tag));
 			printf("S - Node %d received data block from node %d with size %lu\n", local_host, src, db.size);
 			fflush(stdout);
+			if (db.size > BLOCK_SIZE) {
+                printf("S - receive overflow!!!\n");
+                sleep(5);
+            }
             if (db.size > 0) {
 				size_t bytes_copied = 0;
 				while (bytes_copied < db.size) {
 					s = new record_s();
 					assert(bytes_copied + sizeof(record_s) <= db.size);	
 					memcpy(s, (char *)db.data + bytes_copied, sizeof(record_s));
+					//*s = *((record_s *)db.data + bytes_copied / sizeof(record_s));
 					bytes_copied += sizeof(record_s);
 					//printf("S - Node %d received record_s (%u, %u) from node %d with size %lu\n", local_host, s->k, s->p, src, db.size);
 					//fflush(stdout);
@@ -178,9 +210,9 @@ static void *process_S(void *param) {
 					int ret = - 2;		//set 1st time starting searching index (ret + 1) as -1. 
 					while ((ret = h_table->find(s->k, ret + 1, &r)) >= 0) {
 						//Output joined tuples
-						printf("Join Result: Node %d #%d, join_key %u payload_r %u, payload_s %u\n", local_host, ++join_num, 
-								s->k, r->p, s->p);
-						fflush(stdout);
+						//printf("Join Result: Node %d #%d, join_key %u payload_r %u, payload_s %u\n", local_host, ++join_num, 
+						//		s->k, r->p, s->p);
+						//fflush(stdout);
 					}
 				}
 			} else {
@@ -202,7 +234,7 @@ int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
     worker_threads = new pthread_t[TAGS];
 
     //create HashTable h_table
-    HashTable *h_table = new HashTable(HASH_TABLE_SIZE);
+    HashTable *h_table = new HashTable(R->num_records / 3 / 0.75);
 
 	
     //start processing table R

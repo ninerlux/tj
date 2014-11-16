@@ -81,7 +81,7 @@ int HashTable::find(join_key_t k, int index, record_r **r) {
         if (i >= num) {
             i = 0;
         }
-    } while (i != hash_key);
+    } while (table[i] != NULL && i != hash_key);
 	
     return -1;
 }
