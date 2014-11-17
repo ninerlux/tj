@@ -44,7 +44,7 @@ static void *process_R(void *param) {
         for (int i = 0; i < R->num_records; i++) {
             // hash each record's join key to get destination node number
             // hash() is the hash function of hash table. It is like "key % p", where p is a very large prime
-            dest = h_table->hash(R->records[i].k) % hosts;
+            dest = h_table->hash32(R->records[i].k) % hosts;
             if (dbs[dest].size + sizeof(record_r) > BLOCK_SIZE) {
 				assert(dbs[dest].size <= BLOCK_SIZE);
 				//printf("R1 - Node %d send data block to node %d with %lu record_r\n", local_host, dest, dbs[dest].size / sizeof(record_r));
@@ -141,7 +141,7 @@ static void *process_S(void *param) {
         for (int i = 0; i < S->num_records; i++) {
             // hash each record's join key to get destination node number
             // hash() is the hash function of hash table. It is like "key % p", where p is a very large prime
-			dest = h_table->hash(S->records[i].k) % hosts;
+			dest = h_table->hash32(S->records[i].k) % hosts;
             if (dbs[dest].size + sizeof(record_s) > BLOCK_SIZE) {
 				assert(dbs[dest].size <= BLOCK_SIZE);
 				//printf("S1 - Node %d send data block to node %d with %lu record_s\n", local_host, dest, dbs[dest].size / sizeof(record_s));
@@ -226,7 +226,7 @@ int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
     worker_threads = new pthread_t[TAGS];
 
     //create HashTable h_table
-	size_t h_table_size = R->num_records / 0.75;
+	size_t h_table_size = R->num_records / 0.2;
 	printf("hash table size = %lu\n", h_table_size);
 	fflush(stdout);
     HashTable *h_table = new HashTable(h_table_size);

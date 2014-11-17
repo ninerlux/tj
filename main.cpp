@@ -54,7 +54,7 @@ struct table_r create_table_r(long bytes) {
 	for (i = 0; i < R.num_records; i++) {
 		while ((rand = (int) random()) == 0);
       
-        R.records[i].k = (join_key_t) rand % 1000000;
+        R.records[i].k = (join_key_t) rand;
         for (j = 0; j < BYTES_PAYLOAD_R; j++) {
             R.records[i].p.bytes[j] = ((uint8_t) random()) + 1;
         }
@@ -80,7 +80,7 @@ struct table_s create_table_s(long bytes) {
     for (i = 0; i < S.num_records; i++) {
         while ((rand = (int) random()) == 0);
       
-        S.records[i].k = (join_key_t) rand % 1000000;
+        S.records[i].k = (join_key_t) rand;
         for (j = 0; j < BYTES_PAYLOAD_S; j++) {
             S.records[i].p.bytes[j] = ((uint8_t) random()) + 1;
         }
