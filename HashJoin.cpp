@@ -38,6 +38,7 @@ static void *process_R(void *param) {
 		int dest;
 		for (dest = 0; dest < hosts; dest++) {
 			while (!CL->send_begin(&dbs[dest], dest, 1));
+			dbs[dest].size = 0;
 		}
        // Send each record in R to destination node
         for (int i = 0; i < R->num_records; i++) {
@@ -46,9 +47,9 @@ static void *process_R(void *param) {
             dest = h_table->hash(R->records[i].k) % hosts;
             if (dbs[dest].size + sizeof(record_r) > BLOCK_SIZE) {
 				assert(dbs[dest].size <= BLOCK_SIZE);
-				CL->send_end(dbs[dest], dest, 1);
-				//printf("R1 - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
+				//printf("R1 - Node %d send data block to node %d with %lu record_r\n", local_host, dest, dbs[dest].size / sizeof(record_r));
 				//fflush(stdout); 
+				CL->send_end(dbs[dest], dest, 1);
 				while (!CL->send_begin(&dbs[dest], dest, 1));
 				dbs[dest].size = 0;
 			}
@@ -61,20 +62,21 @@ static void *process_R(void *param) {
 			// Send last data blocks
 			if (dbs[dest].size > 0) {
 				assert(dbs[dest].size <= BLOCK_SIZE);
-				CL->send_end(dbs[dest], dest, 1);
-				//printf("R2 - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
+				//printf("R2 - Node %d send data block to node %d with %lu record_r\n", local_host, dest, dbs[dest].size / sizeof(record_r));
 				//fflush(stdout); 
+				CL->send_end(dbs[dest], dest, 1);
 			}		
 			// Send end flags
             while (!CL->send_begin(&dbs[dest], dest, 1));
             dbs[dest].size = 0;
-			CL->send_end(dbs[dest], dest, 1);
 			//printf("R3 - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
 			//fflush(stdout); 
+			CL->send_end(dbs[dest], dest, 1);
 		}		
     } else if (tag == 1) {
         // Receive until termination received from all nodes
         int src;
+		int added_items = 0;
         record_r *r;
 		DataBlock db;
 
@@ -82,7 +84,7 @@ static void *process_R(void *param) {
         while (t != hosts) {
             while (!CL->recv_begin(&db, &src, tag));
 			assert(db.size <= BLOCK_SIZE);
-			printf("R - Node %d received data block from node %d with size %lu\n", local_host, src, db.size);
+			printf("R - Node %d received data block from node %d with %lu record_r\n", local_host, src, db.size / sizeof(record_r));
 			fflush(stdout);
             if (db.size > 0) {
 				size_t bytes_copied = 0;
@@ -96,13 +98,22 @@ static void *process_R(void *param) {
 					//fflush(stdout);
 					//Add the data to hash table
 					int ret;
-					assert((ret = h_table->add(r)) >0);
+					//assert((ret = h_table->add(r)) >0);
+					if ((ret = h_table->add(r)) < 0) {
+						printf("HashTable full!!! added items = %d\n", added_items);
+						fflush(stdout);
+						assert(ret >= 0);
+					} else {
+						added_items++;
+					}
 				}
             } else {
                 t++;
             }
             CL->recv_end(db, src, tag);
         }
+		printf("Node %d add items %d\n", local_host, added_items);
+		fflush(stdout);
     }
 
     return NULL;
@@ -124,6 +135,7 @@ static void *process_S(void *param) {
 		int dest;
 		for (dest = 0; dest < hosts; dest++) {
 			while (!CL->send_begin(&dbs[dest], dest, 1));
+			dbs[dest].size = 0;
 		}
 		// Send each record in S to destination node
         for (int i = 0; i < S->num_records; i++) {
@@ -132,9 +144,9 @@ static void *process_S(void *param) {
 			dest = h_table->hash(S->records[i].k) % hosts;
             if (dbs[dest].size + sizeof(record_s) > BLOCK_SIZE) {
 				assert(dbs[dest].size <= BLOCK_SIZE);
-				CL->send_end(dbs[dest], dest, 1);
-				//printf("S1 - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
+				//printf("S1 - Node %d send data block to node %d with %lu record_s\n", local_host, dest, dbs[dest].size / sizeof(record_s));
 				//fflush(stdout); 
+				CL->send_end(dbs[dest], dest, 1);
 				while (!CL->send_begin(&dbs[dest], dest, 1));
 				dbs[dest].size = 0;
 			}
@@ -147,16 +159,16 @@ static void *process_S(void *param) {
 			// Send last data blocks
 			if (dbs[dest].size > 0) {
 				assert(dbs[dest].size <= BLOCK_SIZE);
-				CL->send_end(dbs[dest], dest, 1);
-				//printf("S2 - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
+				//printf("S2 - Node %d send data block to node %d with %lu record_s\n", local_host, dest, dbs[dest].size / sizeof(record_s));
 				//fflush(stdout);
+				CL->send_end(dbs[dest], dest, 1);
 			}
 			// Send end flags
 			while (!CL->send_begin(&dbs[dest], dest, 1));
 			dbs[dest].size = 0;
-			CL->send_end(dbs[dest], dest, 1);
 			//printf("S3 - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
 			//fflush(stdout);
+			CL->send_end(dbs[dest], dest, 1);
 		}    
 	} else if (tag == 1) {
         // Receive until termination received from all nodes
@@ -166,11 +178,11 @@ static void *process_S(void *param) {
 		DataBlock db;
 
         int t = 0;
-		int join_num = 0;
+		size_t join_num = 0;
         while (t != hosts) {
             while (!CL->recv_begin(&db, &src, tag));
 			assert(db.size <= BLOCK_SIZE);
-			printf("S - Node %d received data block from node %d with size %lu\n", local_host, src, db.size);
+			printf("S - Node %d received data block from node %d with %lu record_s\n", local_host, src, db.size / sizeof(record_s));
 			fflush(stdout);
 			if (db.size > 0) {
 				size_t bytes_copied = 0;
@@ -189,6 +201,7 @@ static void *process_S(void *param) {
 						//printf("Join Result: Node %d #%d, join_key %u payload_r %u, payload_s %u\n", local_host, ++join_num, 
 						//		s->k, r->p, s->p);
 						//fflush(stdout);
+						join_num++;
 					}
 				}
 			} else {
@@ -196,6 +209,9 @@ static void *process_S(void *param) {
             }
             CL->recv_end(db, src, tag);
         }
+
+		printf("Node %d JOIN NUM = %lu\n", local_host, join_num);
+		fflush(stdout);
     }
 
     return NULL;
@@ -210,7 +226,7 @@ int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
     worker_threads = new pthread_t[TAGS];
 
     //create HashTable h_table
-	size_t h_table_size = R->num_records / 3 / 0.75;
+	size_t h_table_size = R->num_records / 0.75;
 	printf("hash table size = %lu\n", h_table_size);
 	fflush(stdout);
     HashTable *h_table = new HashTable(h_table_size);

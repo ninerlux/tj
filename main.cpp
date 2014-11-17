@@ -54,7 +54,7 @@ struct table_r create_table_r(long bytes) {
 	for (i = 0; i < R.num_records; i++) {
 		while ((rand = (int) random()) == 0);
       
-        R.records[i].k = (join_key_t) rand % 100000;
+        R.records[i].k = (join_key_t) rand % 1000000;
         for (j = 0; j < BYTES_PAYLOAD_R; j++) {
             R.records[i].p.bytes[j] = ((uint8_t) random()) + 1;
         }
@@ -80,7 +80,7 @@ struct table_s create_table_s(long bytes) {
     for (i = 0; i < S.num_records; i++) {
         while ((rand = (int) random()) == 0);
       
-        S.records[i].k = (join_key_t) rand % 100000;
+        S.records[i].k = (join_key_t) rand % 1000000;
         for (j = 0; j < BYTES_PAYLOAD_S; j++) {
             S.records[i].p.bytes[j] = ((uint8_t) random()) + 1;
         }
@@ -105,8 +105,8 @@ int main(int argc, char** argv) {
 
     AbstractAlgo *algo;
 
-    struct table_r R = create_table_r(atol(argv[2]) * 1024 );
-    struct table_s S = create_table_s(atol(argv[2]) * 1024  * atol(argv[3]));
+    struct table_r R = create_table_r(atol(argv[2]) * 1024 * 1024);
+    struct table_s S = create_table_s(atol(argv[2]) * 1024 * 1024 * atol(argv[3]));
 
     if (strcmp(code, "test") == 0) {
         algo = new ProducerConsumer();

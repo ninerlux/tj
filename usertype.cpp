@@ -58,8 +58,8 @@ int HashTable::add(record_r *r) {
                 return i;
             }
         } else {
-			printf("hash table full !!! size = %lu \n", num);
-			fflush(stdout);
+			//printf("hash table full !!! size = %lu \n", num);
+			//fflush(stdout);
             return -1;
         }
     }
