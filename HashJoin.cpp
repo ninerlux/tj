@@ -11,8 +11,6 @@
 #include "usertype.h"
 
 #define TAGS 2
-#define MSGS 100
-#define HASH_TABLE_SIZE 1000
 
 template <typename Table>
 class worker_param {
@@ -20,7 +18,7 @@ public:
     int tag;
     ConnectionLayer *CL;
     Table *t;
-    int scan_start_index, scan_end_index;
+    int start_index, end_index;
     HashTable *h;
 };
 
@@ -202,7 +200,7 @@ int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
 	size_t h_table_size = R->num_records / 0.1;
 	printf("hash table size = %lu\n", h_table_size);
 	fflush(stdout);
-    HashTable *h_table = new HashTable(h_table_size);
+    HashTable<record_r> *h_table = new HashTable<record_r>(h_table_size);
 
 	//start table R scan_and_send
 	worker_param<table_r> *param_r = new worker_param<table_r>();

@@ -109,6 +109,7 @@ public:
     pthread_mutex_t mutex;
 };
 
+template <typename Record>
 class HashTable {
 public:
     //local HashTable for hash join
@@ -121,6 +122,8 @@ public:
     size_t hash32(join_key_t k);
     int add(record_r *r);
     int find(join_key_t k, record_r **r, size_t index, size_t nr_results);	//index: starting searching index
+//    int add_s(record_s *s);
+//    int find_s(join_key_t k, record_s **s, size_t index, size_t nr_results);
 	size_t getNum() {return num;}
 
 private:
