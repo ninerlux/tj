@@ -439,13 +439,10 @@ void *ConnectionLayer::readFromSocket(void *param) {
         }
 
         // Read from socket() in that list node
-        size_t n;
-        size_t r;
-        size_t size;
-
-        r = 0;
-        while (r < sizeof(size)) {
-            n = read(conn_fd, (char *) &size + r, sizeof(size) - r);
+        int n;
+		size_t r = 0;
+        while (r < sizeof(node->db.size)) {
+            n = read(conn_fd, (char *) &(node->db.size) + r, sizeof(node->db.size) - r);
             if (n < 0) {
                 printf("readFromSocket: error on reading from src %d on tag %d\n", src, tag);
                 pthread_exit(NULL);
@@ -454,23 +451,22 @@ void *ConnectionLayer::readFromSocket(void *param) {
             r += n;
         }
 
-        r = 0;
-        while (r < size) {
-            n = read(conn_fd, (char *) node->db.data + r, size - r);
-            if (n < 0) {
-                printf("readFromSocket: error on reading from src %d on tag %d\n", src, tag);
-                pthread_exit(NULL);
-            }
-
-            r += n;
-        }
-
-        node->db.size = size;
+        //node->db.size = size;
 
         if (node->db.size > BLOCK_SIZE) {
             printf("readFromSocket: error on datablock size %lu from src %d on tag %d\n",
                     node->db.size, src, tag);
             pthread_exit(NULL);
+        }
+
+        r = 0;
+        while (r < node->db.size) {
+            n = read(conn_fd, (char *) node->db.data + r, node->db.size - r);
+            if (n < 0) {
+                printf("readFromSocket: error on reading from src %d on tag %d\n", src, tag);
+                pthread_exit(NULL);
+            }
+            r += n;
         }
 
         // Add the list node to the tail of the 'full' receive list
@@ -501,29 +497,35 @@ void *ConnectionLayer::writeToSocket(void *param) {
             continue;
         }
 
-        size_t n;
+        int n;
+		size_t r = 0;
+        while (r < sizeof(node->db.size)) {
+            n = write(conn_fd, (char *) &(node->db.size) + r, sizeof(node->db.size) - r);
+            if (n < 0) {
+                printf("writeToSocket: error on writing to dest %d on tag %d\n", dest, tag);
+                pthread_exit(NULL);
+            }
 
-        n = write(conn_fd, &node->db.size, sizeof(node->db.size));
-
-        if (n < 0) {
-            printf("writeToSocket: error on writing to dest %d on tag %d\n", dest, tag);
-            pthread_exit(NULL);
+            r += n;
         }
 
         if (n != sizeof(node->db.size)) {
-            printf("writeToSocket: error - partial writing to dest %d on tag %d with size %lu, actual sizeof(db.size) is %lu\n", dest, tag, n, sizeof(node->db.size));
+            printf("writeToSocket: error - partial writing to dest %d on tag %d with size %d\n", dest, tag, n);
             pthread_exit(NULL);
         }
 
-        n = write(conn_fd, node->db.data, node->db.size);
-
-        if (n < 0) {
-            printf("writeToSocket: error on writing to dest %d on tag %d\n", dest, tag);
-            pthread_exit(NULL);
+        r = 0;
+        while (r < node->db.size) {
+            n = write(conn_fd, (char *) node->db.data + r, node->db.size - r);
+            if (n < 0) {
+                printf("writeToSocket: error on writing to dest %d on tag %d\n", dest, tag);
+                pthread_exit(NULL);
+            }
+            r += n;
         }
 
-        if (n != node->db.size) {
-            printf("writeToSocket: error - partial writing to dest %d on tag %d with size %lu, actual db size is %lu\n", dest, tag, n, node->db.size);
+        if (r != node->db.size) {
+            printf("writeToSocket: error - partial writing to dest %d on tag %d with size %d\n", dest, tag, n);
             pthread_exit(NULL);
         }
 

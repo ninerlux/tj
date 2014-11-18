@@ -204,7 +204,7 @@ static void *receive_and_probe(void *param) {
 }
 
 int HashJoin::get_tags() {
-    return 3;
+    return 2;
 }
 
 int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
