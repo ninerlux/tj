@@ -2,30 +2,29 @@
 #include "ConnectionLayer.h"
 #include "usertype.h"
 
-template <typename Table>
+template <typename Table, typename Record>
 class worker_param {
 public:
     int tag;
     ConnectionLayer *CL;
     Table *t;
     int start_index, end_index;
-    HashTable *h;
+    HashTable<Record> *h;
 };
 
 template <typename Table, typename Record>
 static void *scan_and_send(void *param) {
-    worker_param<Table> *p = (worker_param<Table> *) param;
+    worker_param<Table, Record> *p = (worker_param<Table, Record> *) param;
     ConnectionLayer *CL = p->CL;
     Table *T = p->t;
 
-    HashTable h(T->num_records / 0.1);
+    HashTable<Record> h(T->num_records / 0.1);
 
     int hosts = CL->get_hosts();
 
     int dest;
     DataBlock *dbs = new DataBlock[hosts];
     // prepare data blocks for each destination
-    int dest;
     for (dest = 0; dest < hosts; dest++) {
         while (!CL->send_begin(&dbs[dest], dest, 1));
         dbs[dest].size = 0;
