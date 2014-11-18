@@ -233,7 +233,7 @@ int ConnectionLayer::recv_begin(DataBlock *db, int *src, int tag) {
 
         // Check if largest_full_list_size > 0
         // Necessary because we checked the num before locking
-        if (largest_full_list_size > 0) {
+        if (full_list[tag][RECV][largest_full_list_index].getNum() > 0) {
             break;
         } else {
             pthread_mutex_unlock(&full_list[tag][RECV][largest_full_list_index].mutex);
@@ -511,7 +511,7 @@ void *ConnectionLayer::writeToSocket(void *param) {
         }
 
         if (n != sizeof(node->db.size)) {
-            printf("writeToSocket: error - partial writing to dest %d on tag %d with size %lu\n", dest, tag, n);
+            printf("writeToSocket: error - partial writing to dest %d on tag %d with size %lu, actual sizeof(db.size) is %lu\n", dest, tag, n, sizeof(node->db.size));
             pthread_exit(NULL);
         }
 
@@ -523,7 +523,7 @@ void *ConnectionLayer::writeToSocket(void *param) {
         }
 
         if (n != node->db.size) {
-            printf("writeToSocket: error - partial writing to dest %d on tag %d with size %lu\n", dest, tag, n);
+            printf("writeToSocket: error - partial writing to dest %d on tag %d with size %lu, actual db size is %lu\n", dest, tag, n, node->db.size);
             pthread_exit(NULL);
         }
 
