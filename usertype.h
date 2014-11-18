@@ -120,7 +120,7 @@ public:
 
     size_t hash32(join_key_t k);
     int add(record_r *r);
-    int find(join_key_t k, int index, record_r **r);	//index: starting searching index
+    int find(join_key_t k, record_r **r, size_t index, size_t nr_results);	//index: starting searching index
 	size_t getNum() {return num;}
 
 private:

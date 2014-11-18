@@ -71,11 +71,11 @@ int HashTable::add(record_r *r) {
     }
 }
 
-int HashTable::find(join_key_t k, int index, record_r **r) {
+int HashTable::find(join_key_t k, record_r **r, size_t index, size_t nr_results) {
     size_t hash_key = hash32(k);
     size_t i = hash_key;
 
-	if (index != -1) {
+	if (index < num) {
 		i = index;
 	}
 
