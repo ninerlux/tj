@@ -11,7 +11,7 @@
 #include "usertype.h"
 
 #define TAGS 2
-#define MSGS 5
+#define MSGS 100
 
 struct worker_param {
     int tag;
@@ -37,7 +37,6 @@ static void *worker(void *param) {
                 sprintf((char *) db.data, "Test message %d from %d", m, local_host);
                 db.size = strlen((const char *) db.data) + 1;
                 CL->send_end(db, n, tag+1);
-                printf("\tNode %d sent \"%s\" %p to node %d\n", local_host, (char *) db.data, db.data, n);
             }
 
             while(!CL->send_begin(&db, n, tag+1));
@@ -54,7 +53,7 @@ static void *worker(void *param) {
             while (!CL->recv_begin(&db, &src, tag));
 
             if (db.size > 0) {
-                printf("\tNode %d received \"%s\" %p from node %d\n", local_host, (char *) db.data, db.data, src);
+                printf("Node %d received \"%s\" %p from node %d\n", local_host, (char *) db.data, db.data, src);
                 fflush(stdout);
             } else {
                 t++;
@@ -72,7 +71,7 @@ int ProducerConsumer::get_tags() {
     return TAGS;
 }
 
-int ProducerConsumer::run(ConnectionLayer *CL, struct table_r R, struct table_s S) {
+int ProducerConsumer::run(ConnectionLayer *CL, struct table_r *R, struct table_s *S) {
     int t;
     worker_threads = new pthread_t[TAGS];
 

@@ -1,11 +1,14 @@
 CC = g++
 CFLAGS = -pthread -Wall -g -std=c++0x
 
-join : main.o tcp.o usertype.o ProducerConsumer.o ConnectionLayer.o
-	${CC} ${CFLAGS} ConnectionLayer.o ProducerConsumer.o tcp.o usertype.o main.o -o join
+join : main.o tcp.o usertype.o HashJoin.o ProducerConsumer.o ConnectionLayer.o
+	${CC} ${CFLAGS} ConnectionLayer.o ProducerConsumer.o HashJoin.o tcp.o usertype.o main.o -o join
 
 ConnectionLayer.o : ConnectionLayer.h ConnectionLayer.cpp
 	${CC} ${CFLAGS} -c ConnectionLayer.cpp -o ConnectionLayer.o
+
+HashJoin.o : Algorithms.h HashJoin.cpp
+	${CC} ${CFLAGS} -c HashJoin.cpp -o HashJoin.o
 
 ProducerConsumer.o : Algorithms.h ProducerConsumer.cpp
 	${CC} ${CFLAGS} -c ProducerConsumer.cpp -o ProducerConsumer.o

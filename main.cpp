@@ -37,52 +37,56 @@ void printListBackward(ListNode *tail) {
     printf("\n");
 }
 
-struct table_r create_table_r(long bytes) {
-    int i, j;
-    int rand;
-    struct table_r R;
-    R.num_bytes = bytes;
-    R.num_records = bytes / sizeof(record_r);
+template<typename payload_t>
+payload_t key_to_payload(join_key_t k, float a) {
+    payload_t p;
+    uint32_t res = (uint32_t)(a * k);
+    memcpy(&p, &res, sizeof(payload_t));
+    return p;
+}
 
-    R.records = (struct record_r *) malloc(bytes);
-    if (R.records == NULL)
-        error("malloc failed");
+void create_table(table_r &R, long r_bytes, table_s &S, long s_bytes) {
+    int i, j;
+
+    R.num_bytes = r_bytes;
+    R.num_records = r_bytes / sizeof(record_r);
+
+    printf("Create R: num of records = %d\n", R.num_records);
+
+    R.records = (struct record_r *) malloc(r_bytes);
+    if (R.records == NULL) {
+        error("malloc R failed");
+    }
 
     for (i = 0; i < R.num_records; i++) {
-        while ((rand = (int) random()) == 0);
-      
-        R.records[i].k = (join_key_t) rand;
-        for (j = 0; j < BYTES_PAYLOAD_R; j++)
-            R.records[i].p.bytes[j] = ((uint8_t) R.records[i].k) + 1;
+        join_key_t rand;
+        while ((rand = (uint32_t) random()) == 0);
+        R.records[i].k = rand;
+        R.records[i].p = key_to_payload<r_payload_t>(R.records[i].k, 131);
+        //printf("cR: k %u, p %u \n", R.records[i].k, R.records[i].p);
     }
 
-    return R;
-}
+    S.num_bytes = s_bytes;
+    S.num_records = s_bytes / sizeof(record_s);
 
-struct table_s create_table_s(long bytes) {
-    int i, j;
-    int rand;
-    struct table_s S;
-    S.num_bytes = bytes;
-    S.num_records = bytes / sizeof(record_s);
+    printf("Create S: num of records = %d\n", S.num_records);
 
-    S.records = (struct record_s *) malloc(bytes);
-    if (S.records == NULL)
-        error("malloc failed");
-
-    for (i = 0; i < S.num_records; i++) {
-        while ((rand = (int) random()) == 0);
-      
-        S.records[i].k = (join_key_t) rand;
-        for (j = 0; j < BYTES_PAYLOAD_S; j++)
-            S.records[i].p.bytes[j] = ((uint8_t) S.records[i].k) + 1;
+    S.records = (struct record_s *) malloc(s_bytes);
+    if (S.records == NULL) {
+        error("malloc S failed");
     }
 
-    return S;
+    for (j = 0; j < S.num_records; j++) {
+        join_key_t rand;
+        while ((rand = (uint32_t) random()) == 0);
+        S.records[j].k = rand;
+        S.records[j].p = key_to_payload<s_payload_t>(S.records[j].k, 181);
+        //printf("cS: k %u, p %u \n", S.records[j].k, S.records[j].p);
+    }
 }
 
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
     if (argc != 4) {
         fprintf(stderr, "Usage: join <algorithm code> <size of R in kb> <size of S as multiple of R>\n");
         return 0;
@@ -97,11 +101,14 @@ int main(int argc, char** argv) {
 
     AbstractAlgo *algo;
 
-    struct table_r R = create_table_r(atol(argv[2]) * 1024);
-    struct table_s S = create_table_s(atol(argv[2]) * 1024 * atol(argv[3]));
+    struct table_r R;
+    struct table_s S;
+    create_table(R, atol(argv[2]) * 1024 * 1024, S, atol(argv[2]) * 1024 * 1024 * atol(argv[3]));
 
     if (strcmp(code, "test") == 0) {
         algo = new ProducerConsumer();
+    } else if (strcmp(code, "hj") == 0) {
+        algo = new HashJoin();
     } else {
         fprintf(stderr, "Unrecognized algorithm code\n");
         return 0;
@@ -111,7 +118,7 @@ int main(int argc, char** argv) {
 
     CL = new ConnectionLayer(conf, domain, tags);
 
-    algo->run(CL, R, S);
+    algo->run(CL, &R, &S);
 
 
     free(R.records);

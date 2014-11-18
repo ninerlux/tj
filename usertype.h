@@ -10,8 +10,8 @@
 #define MAX_CORES 32
 
 #define BLOCK_SIZE 4096
-#define BUFFER_SIZE 4096        // Set BUFFER_SIZE equal to BLOCK_SIZE to read one block of data each time
-#define MAX_BLOCKS_PER_LIST 10  // Number of blocks initially allocated to the free lists
+#define BUFFER_SIZE 4096 	//set BUFFER_SIZE equal to BLOCK_SIZE to read one block of data each time
+#define MAX_BLOCKS_PER_LIST 100000 // Number of blocks initially allocated to the free list
 
 #define BYTES_PAYLOAD_R 4
 #define BYTES_PAYLOAD_S 4
@@ -93,50 +93,55 @@ private:
 };
 
 class HashList {
+public:
+    HashList() {
+        pthread_mutex_init(&mutex, NULL);
+    }
+
     //the hash list contains pointers to data blocks
     //HashList is the data structure of 'busy' list
     //It is used to record history of data blocks sent to worker thread to process
     //We only guarantee the void *data is not tampered when it is sent back
     //We do not guarantee data content is not modified
     //The pointer to ListNode needs to be stored in hash table's value to be recycled
-public:
-    HashList() {
-        pthread_mutex_init(&mutex, NULL);
-    }
     unordered_map<void*, ListNode*> list;
-    size_t getNum() {return num;}
+    size_t num;
     pthread_mutex_t mutex;
+};
+
+class HashTable {
+public:
+    //local HashTable for hash join
+    //The HashTable stores keys and payloads in table R
+    HashTable(size_t size) : num(size) {
+        table = new record_r *[num];
+		hash32_factor = 79;
+    };
+
+    size_t hash32(join_key_t k);
+    int add(record_r *r);
+    int find(join_key_t k, record_r **r, size_t index, size_t nr_results);	//index: starting searching index
+	size_t getNum() {return num;}
 
 private:
+	size_t hash32_factor;
     size_t num;
+    record_r **table;
 };
 
 struct msg {
     void *data;
     int size;
     int tag;
-    int node;       // either source or destination node (depending on direction)
+    int node;		//either source of destionation node (depending on direction)
 };
 
 //parameters to pass to each thread
 struct thr_param {
-    int node;       // either source or destination node (depending on direction)
+    int node;       	// either source or destination node (depending on direction)
     int tag;
     int conn_type;       //0: read; 1: write
     int conn;            //connection file descriptor
-};
-
-//statistic info for full lists per tag
-class ListStat {
-public:
-    ListStat() {
-        pthread_mutex_init(&mutex, NULL);
-        pthread_cond_init(&cond, NULL);
-    };
-
-    pthread_cond_t cond;
-    pthread_mutex_t mutex;
-    size_t l_size; //longest full list size
 };
 
 #endif
