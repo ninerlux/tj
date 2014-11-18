@@ -101,8 +101,6 @@ int main(int argc, char **argv) {
 
     AbstractAlgo *algo;
 
-    //struct table_r R = create_table_r(atol(argv[2]) * 1024 * 1024);
-    //struct table_s S = create_table_s(atol(argv[2]) * 1024 * 1024 * atol(argv[3]));
     struct table_r R;
     struct table_s S;
     create_table(R, atol(argv[2]) * 1024 * 1024, S, atol(argv[2]) * 1024 * 1024 * atol(argv[3]));

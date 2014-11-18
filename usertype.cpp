@@ -38,7 +38,7 @@ int List::addTail(ListNode * node) {
 size_t HashTable::hash32(join_key_t k) {
 	uint64_t hash = (uint32_t) (k * hash32_factor);
 	size_t res = (hash * num) >> 32;
-	assert(res >= 0 && res < num);
+	//assert(res >= 0 && res < num);
 	return res; 
 }
 

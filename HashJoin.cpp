@@ -14,7 +14,9 @@
 #define MSGS 100
 #define HASH_TABLE_SIZE 1000
 
-struct worker_param {
+template <typename Table>
+class worker_param {
+public:
     int tag;
     ConnectionLayer *CL;
     Table *t;
@@ -30,7 +32,7 @@ static void *scan_and_send(void *param) {
     HashTable *h_table = p->h;
 
     int hosts = CL->get_hosts();
-    int local_host = CL->get_local_host();
+    //int local_host = CL->get_local_host();
 
     DataBlock *dbs = new DataBlock[hosts];
     // prepare data blocks for each destination
@@ -46,7 +48,7 @@ static void *scan_and_send(void *param) {
         dest = h_table->hash32(T->records[i].k) % hosts;
         if (dbs[dest].size + sizeof(Record) > BLOCK_SIZE) {
             CL->send_end(dbs[dest], dest, 1);
-            //printf("Scan - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
+            //printf("Scan - Node %d send data block to node %d with %lu records\n", local_host, dest, dbs[dest].size / sizeof(Record));
             //fflush(stdout);
             while (!CL->send_begin(&dbs[dest], dest, 1));
             dbs[dest].size = 0;
@@ -61,7 +63,7 @@ static void *scan_and_send(void *param) {
         if (dbs[dest].size > 0) {
             assert(dbs[dest].size <= BLOCK_SIZE);
             CL->send_end(dbs[dest], dest, 1);
-            //printf("Scan - Node %d send data block to node %d with size %lu\n", local_host, dest, dbs[dest].size);
+            //printf("Scan - Node %d send data block to node %d with %lu records\n", local_host, dest, dbs[dest].size / sizeof(Record));
             //fflush(stdout);
         }
         // Send end flags
@@ -92,8 +94,8 @@ static void *receive_and_build(void *param) {
     // Receive until termination received from all nodes
     while (t != hosts) {
         while (!CL->recv_begin(&db, &src, 1));
-        printf("R - Node %d received data block from node %d with size %lu\n", local_host, src, db.size);
-        fflush(stdout);
+        //printf("R - Node %d received data block from node %d with %lu records\n", local_host, src, db.size / sizeof(record_r));
+        //fflush(stdout);
         assert(db.size <= BLOCK_SIZE);
         if (db.size > 0) {
             size_t bytes_copied = 0;
@@ -146,12 +148,12 @@ static void *receive_and_probe(void *param) {
     DataBlock db;
 
     int t = 0;
-    int join_num = 0;
+    size_t join_num = 0;
     // Receive until termination received from all nodes
     while (t != hosts) {
         while (!CL->recv_begin(&db, &src, 1));
-        printf("S - Node %d received data block from node %d with size %lu\n", local_host, src, db.size);
-        fflush(stdout);
+        //printf("S - Node %d received data block from node %d with %lu records\n", local_host, src, db.size / sizeof(record_s));
+        //fflush(stdout);
         assert(db.size <= BLOCK_SIZE);
         if (db.size > 0) {
             size_t bytes_copied = 0;
@@ -194,45 +196,42 @@ int HashJoin::get_tags() {
 
 int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
     int t;
-    worker_threads = new pthread_t[TAGS];
+    worker_threads = new pthread_t[32];
 
     //create HashTable h_table
-	size_t h_table_size = R->num_records / 0.2;
+	size_t h_table_size = R->num_records / 0.1;
 	printf("hash table size = %lu\n", h_table_size);
 	fflush(stdout);
     HashTable *h_table = new HashTable(h_table_size);
 
-	
-    //start processing table R
-    for (t = 0; t < TAGS; t++) {
-        worker_param *param;
-        param = new worker_param();
-        param->CL = CL;
-        param->tag = t;
-        param->R = R;
-        param->S = NULL;
-        param->h = h_table;
-        pthread_create(&worker_threads[t], NULL, &process_R, (void *) param);
-    }
+	//start table R scan_and_send
+	worker_param<table_r> *param_r = new worker_param<table_r>();
+	param_r->CL = CL;
+	param_r->t = R;
+	param_r->h = h_table;
+	pthread_create(&worker_threads[0], NULL, &scan_and_send<table_r, record_r>, (void *) param_r);
+
+	//start table R receive_and_build
+	pthread_create(&worker_threads[1], NULL, &receive_and_build, (void *) param_r);
+
     //barrier
-    for (t = 0; t < TAGS; t++) {
+    for (t = 0; t < 2; t++) {
         void *retval;
         pthread_join(worker_threads[t], &retval);
     }
 
-    //start processing table S
-    for (t = 0; t < TAGS; t++) {
-        worker_param *param;
-        param = new worker_param();
-        param->CL = CL;
-        param->tag = t;
-        param->R = NULL;
-        param->S = S;
-        param->h = h_table;
-        pthread_create(&worker_threads[t], NULL, &process_S, (void *) param);
-    }
+	//start table S scan_and_send
+	worker_param<table_s> *param_s = new worker_param<table_s>();
+	param_s->CL = CL;
+	param_s->t = S;
+	param_s->h = h_table;
+	pthread_create(&worker_threads[0], NULL, &scan_and_send<table_s, record_s>, (void *) param_s);
+
+	//start table S receive_and_build
+	pthread_create(&worker_threads[1], NULL, &receive_and_probe, (void *) param_s);
+
     //wait threads to finish
-    for (t = 0; t < TAGS; t++) {
+    for (t = 0; t < 2; t++) {
         void *retval;
         pthread_join(worker_threads[t], &retval);
     }
