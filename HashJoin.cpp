@@ -9,6 +9,7 @@
 #include "Algorithms.h"
 #include "ConnectionLayer.h"
 #include "usertype.h"
+#include "HashTable.h"
 
 #define TAGS 2
 

@@ -1,6 +1,8 @@
 #include "Algorithms.h"
 #include "ConnectionLayer.h"
 #include "usertype.h"
+#include "HashTable.h"
+#include <assert.h>
 
 template <typename Table, typename Record>
 class worker_param {
@@ -71,5 +73,5 @@ static void *scan_and_send(void *param) {
 }
 
 static void *recv_and_build(void *param) {
-
+	return NULL;
 }
