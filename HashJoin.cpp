@@ -10,9 +10,53 @@
 #include "ConnectionLayer.h"
 #include "usertype.h"
 
-#define TAGS 2
-#define MSGS 100
-#define HASH_TABLE_SIZE 1000
+#define CPU_CORES 16
+#define R_SEND_THREADS 4
+#define R_RECV_THREADS 12
+#define S_SEND_THREADS 4
+#define S_RECV_THREADS 12
+
+struct share_v {
+public:
+	share_v() {
+		pthread_mutex_init(&share_mutex, NULL);
+		nodes_recv_complete = 0;
+		added_items = 0;
+		join_num = 0;
+	}
+	int nodes_recv_complete;
+	size_t added_items;
+	size_t join_num;
+
+	pthread_mutex_t share_mutex;
+	
+	int get_nrc() {
+		pthread_mutex_lock(&share_mutex);
+		int r = nodes_recv_complete;
+		pthread_mutex_unlock(&share_mutex);
+		return r;
+	}
+
+	void add_nrc(int n = 1) {
+		pthread_mutex_lock(&share_mutex);
+		nodes_recv_complete += n;
+		pthread_mutex_unlock(&share_mutex);
+	}
+
+	void add_items(int n = 1) {
+		pthread_mutex_lock(&share_mutex);
+		added_items += n;
+		pthread_mutex_unlock(&share_mutex);
+	}
+
+	void add_join(int n = 1) {
+		pthread_mutex_lock(&share_mutex);
+		join_num += n;
+		pthread_mutex_unlock(&share_mutex);
+	}
+};
+
+share_v sv;
 
 template <typename Table>
 class worker_param {
@@ -20,7 +64,7 @@ public:
     int tag;
     ConnectionLayer *CL;
     Table *t;
-    int scan_start_index, scan_end_index;
+    int start_index, end_index;
     HashTable *h;
 };
 
@@ -42,7 +86,7 @@ static void *scan_and_send(void *param) {
         dbs[dest].size = 0;
     }
     // Send each record in T to destination node
-    for (int i = 0; i < T->num_records; i++) {
+    for (int i = p->start_index; i < p->end_index; i++) {
         // hash each record's join key to get destination node number
         // hash() is the hash function of hash table. It is like "key % p", where p is a very large prime
         dest = h_table->hash32(T->records[i].k) % hosts;
@@ -83,16 +127,14 @@ static void *receive_and_build(void *param) {
     HashTable *h_table = p->h;
 
     int hosts = CL->get_hosts();
-    int local_host = CL->get_local_host();
+    //int local_host = CL->get_local_host();
 
     int src;
-    int added_items = 0;
     record_r *r;
     DataBlock db;
 
-    int t = 0;
     // Receive until termination received from all nodes
-    while (t != hosts) {
+    while (sv.get_nrc() != hosts) {
         while (!CL->recv_begin(&db, &src, 1));
         //printf("R - Node %d received data block from node %d with %lu records\n", local_host, src, db.size / sizeof(record_r));
         //fflush(stdout);
@@ -107,22 +149,19 @@ static void *receive_and_build(void *param) {
                 //Add the data to hash table
                 int ret;
                 if ((ret = h_table->add(r)) < 0) {
-                    printf("HashTable full!!! added items = %d\n", added_items);
+                    printf("HashTable full!!! added items = %lu\n", sv.added_items);
                     fflush(stdout);
                     assert(ret >= 0);
                 } else {
-                    added_items++;
+                    sv.add_items();
                 }
             }
         } else {
-            t++;
+            sv.add_nrc();
         }
         CL->recv_end(db, src, 1);
     }
-
-    printf("Node %d add items %d\n", local_host, added_items);
-    fflush(stdout);
-
+    
     return NULL;
 }
 
@@ -140,17 +179,15 @@ static void *receive_and_probe(void *param) {
     HashTable *h_table = p->h;
 
     int hosts = CL->get_hosts();
-    int local_host = CL->get_local_host();
+    //int local_host = CL->get_local_host();
 
     int src;
     record_s *s;
     record_r *r = NULL;
     DataBlock db;
 
-    int t = 0;
-    size_t join_num = 0;
     // Receive until termination received from all nodes
-    while (t != hosts) {
+    while (sv.get_nrc() != hosts) {
         while (!CL->recv_begin(&db, &src, 1));
         //printf("S - Node %d received data block from node %d with %lu records\n", local_host, src, db.size / sizeof(record_s));
         //fflush(stdout);
@@ -163,7 +200,9 @@ static void *receive_and_probe(void *param) {
                 *s = *((record_s *)db.data + bytes_copied / sizeof(record_s));
                 bytes_copied += sizeof(record_s);
                 //Probe data in hash table
-                int ret = h_table->getNum() - 1;        //set 1st time starting searching index (ret + 1) as table size.
+                //set 1st time starting searching index (ret + 1) as table size.
+                //the table size will not vary in multi threading because probing phase does not change table size
+                int ret = h_table->getNum() - 1;
                 while ((ret = h_table->find(s->k, &r, ret + 1, 10)) >= 0) {
                     //Validate key-value mapping for r and s
                     bool valid = false;
@@ -175,28 +214,26 @@ static void *receive_and_probe(void *param) {
                     //printf("Join Result: Node %d #%d, join_key %u payload_r %u, payload_s %u %s\n", local_host, ++join_num,
                     //        s->k, r->p, s->p, valid ? "correct" : "incorrect");
                     //fflush(stdout);
-                    join_num++;
+                    sv.add_join();
                 }
             }
         } else {
-            t++;
+            sv.add_nrc();
         }
         CL->recv_end(db, src, 1);
     }
 
-    printf("Node %d JOIN NUM = %lu\n", local_host, join_num);
-    fflush(stdout);
-
-    return NULL;
+	return NULL;
 }
 
 int HashJoin::get_tags() {
-    return TAGS;
+    return 3;
 }
 
 int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
     int t;
-    worker_threads = new pthread_t[32];
+	int local_host = CL->get_local_host();
+    worker_threads = new pthread_t[16];
 
     //create HashTable h_table
 	size_t h_table_size = R->num_records / 0.1;
@@ -204,37 +241,60 @@ int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
 	fflush(stdout);
     HashTable *h_table = new HashTable(h_table_size);
 
-	//start table R scan_and_send
+    // Allocate #R_SEND_THREADS threads to scan_and_send R table
 	worker_param<table_r> *param_r = new worker_param<table_r>();
 	param_r->CL = CL;
 	param_r->t = R;
 	param_r->h = h_table;
-	pthread_create(&worker_threads[0], NULL, &scan_and_send<table_r, record_r>, (void *) param_r);
 
-	//start table R receive_and_build
-	pthread_create(&worker_threads[1], NULL, &receive_and_build, (void *) param_r);
+    size_t interval = R->num_records / R_SEND_THREADS;
+    for (t = 0; t < R_SEND_THREADS; t++) {
+        param_r->start_index = interval * t;
+        param_r->end_index = interval * (t + 1);
+        pthread_create(&worker_threads[t], NULL, &scan_and_send<table_r, record_r>, (void *) param_r);
+    }
+
+	// Allocate #R_RECV_THREADS threads to recv_and_build R tuples
+    for (t = R_SEND_THREADS; t < R_SEND_THREADS + R_RECV_THREADS; t++) {
+        pthread_create(&worker_threads[t], NULL, &receive_and_build, (void *) param_r);
+    }
 
     //barrier
-    for (t = 0; t < 2; t++) {
+    for (t = 0; t < CPU_CORES; t++) {
         void *retval;
         pthread_join(worker_threads[t], &retval);
     }
+	printf("Node %d add items %lu\n", local_host, sv.added_items);
+    fflush(stdout);
 
-	//start table S scan_and_send
+    sv.nodes_recv_complete = 0;
+	
+	// Allocate #S_SEND_THREADS threads to scan_and_send S table
 	worker_param<table_s> *param_s = new worker_param<table_s>();
 	param_s->CL = CL;
 	param_s->t = S;
 	param_s->h = h_table;
-	pthread_create(&worker_threads[0], NULL, &scan_and_send<table_s, record_s>, (void *) param_s);
 
-	//start table S receive_and_build
-	pthread_create(&worker_threads[1], NULL, &receive_and_probe, (void *) param_s);
+    interval = S->num_records / S_SEND_THREADS;
+    for (t = 0; t < S_SEND_THREADS; t++) {
+        param_s->start_index = interval * t;
+        param_s->end_index = interval * (t + 1);
+        pthread_create(&worker_threads[t], NULL, &scan_and_send<table_s, record_s>, (void *) param_s);
+    }
+
+    // Allocate #S_RECV_THREADS threads to recv_and_probe S tuples
+    for (t = S_SEND_THREADS; t < S_SEND_THREADS + S_RECV_THREADS; t++) {
+        pthread_create(&worker_threads[t], NULL, &receive_and_probe, (void *) param_s);
+    }
 
     //wait threads to finish
-    for (t = 0; t < 2; t++) {
+    for (t = 0; t < CPU_CORES; t++) {
         void *retval;
         pthread_join(worker_threads[t], &retval);
     }
+	
+	printf("Node %d JOIN NUM = %lu\n", local_host, sv.join_num);
+    fflush(stdout);
 
     return 0;
 }
