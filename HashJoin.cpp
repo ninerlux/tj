@@ -12,22 +12,22 @@
 
 #define TAGS 2
 
-template <typename Table>
+template <typename Table, typename Record>
 class worker_param {
 public:
     int tag;
     ConnectionLayer *CL;
     Table *t;
     int start_index, end_index;
-    HashTable *h;
+    HashTable<Record> *h;
 };
 
 template <typename Table, typename Record>
 static void *scan_and_send(void *param) {
-    worker_param<Table> *p = (worker_param<Table> *) param;
+	worker_param<Table, Record> *p = (worker_param<Table, Record> *) param;
     ConnectionLayer *CL = p->CL;
     Table *T = p->t;
-    HashTable *h_table = p->h;
+	HashTable<Record> *h_table = p->h;
 
     int hosts = CL->get_hosts();
     //int local_host = CL->get_local_host();
@@ -76,9 +76,9 @@ static void *scan_and_send(void *param) {
 }
 
 static void *receive_and_build(void *param) {
-    worker_param<table_r> *p = (worker_param<table_r> *) param;
+	worker_param<table_r, record_r> *p = (worker_param<table_r, record_r> *) param;
     ConnectionLayer *CL = p->CL;
-    HashTable *h_table = p->h;
+	HashTable<record_r> *h_table = p->h;
 
     int hosts = CL->get_hosts();
     int local_host = CL->get_local_host();
@@ -133,9 +133,9 @@ join_key_t payload_to_key(payload_t p, float b) {
 }
 
 static void *receive_and_probe(void *param) {
-    worker_param<table_s> *p = (worker_param<table_s> *) param;
+	worker_param<table_s, record_r> *p = (worker_param<table_s, record_r> *) param;
     ConnectionLayer *CL = p->CL;
-    HashTable *h_table = p->h;
+    HashTable<record_r> *h_table = p->h;
 
     int hosts = CL->get_hosts();
     int local_host = CL->get_local_host();
@@ -203,7 +203,7 @@ int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
     HashTable<record_r> *h_table = new HashTable<record_r>(h_table_size);
 
 	//start table R scan_and_send
-	worker_param<table_r> *param_r = new worker_param<table_r>();
+	worker_param<table_r, record_r> *param_r = new worker_param<table_r, record_r>();
 	param_r->CL = CL;
 	param_r->t = R;
 	param_r->h = h_table;
@@ -219,7 +219,7 @@ int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
     }
 
 	//start table S scan_and_send
-	worker_param<table_s> *param_s = new worker_param<table_s>();
+	worker_param<table_s, record_r> *param_s = new worker_param<table_s, record_r>();
 	param_s->CL = CL;
 	param_s->t = S;
 	param_s->h = h_table;

@@ -36,7 +36,7 @@ int List::addTail(ListNode * node) {
 }
 
 template <typename Record>
-size_t HashTable::hash32(join_key_t k) {
+size_t HashTable<Record>::hash32(join_key_t k) {
 	uint64_t hash = (uint32_t) (k * hash32_factor);
 	size_t res = (hash * num) >> 32;
 	//assert(res >= 0 && res < num);
@@ -44,7 +44,7 @@ size_t HashTable::hash32(join_key_t k) {
 }
 
 template <typename Record>
-int HashTable::add(Record *r) {
+int HashTable<Record>::add(Record *r) {
     size_t hash_key = hash32(r->k);
     size_t i = hash_key;
 
@@ -74,7 +74,7 @@ int HashTable::add(Record *r) {
 }
 
 template <typename Record>
-int HashTable::find(join_key_t k, Record **r, size_t index, size_t nr_results) {
+int HashTable<Record>::find(join_key_t k, Record **r, size_t index, size_t nr_results) {
     size_t hash_key = hash32(k);
     size_t i = hash_key;
 
