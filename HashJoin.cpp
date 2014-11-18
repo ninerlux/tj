@@ -16,47 +16,24 @@
 #define S_SEND_THREADS 4
 #define S_RECV_THREADS 12
 
-struct share_v {
-public:
-	share_v() {
-		pthread_mutex_init(&share_mutex, NULL);
-		nodes_recv_complete = 0;
-		added_items = 0;
-		join_num = 0;
-	}
-	int nodes_recv_complete;
-	size_t added_items;
-	size_t join_num;
-
-	pthread_mutex_t share_mutex;
+int nodes_recv_complete;
+pthread_mutex_t nrc_mutex;
 	
-	int get_nrc() {
-		pthread_mutex_lock(&share_mutex);
-		int r = nodes_recv_complete;
-		pthread_mutex_unlock(&share_mutex);
-		return r;
-	}
+size_t added_tuples = 0;
+size_t join_num = 0;
 
-	void add_nrc(int n = 1) {
-		pthread_mutex_lock(&share_mutex);
-		nodes_recv_complete += n;
-		pthread_mutex_unlock(&share_mutex);
-	}
+int get_nrc() {
+	pthread_mutex_lock(&nrc_mutex);
+	int r = nodes_recv_complete;
+	pthread_mutex_unlock(&nrc_mutex);
+	return r;
+}
 
-	void add_items(int n = 1) {
-		pthread_mutex_lock(&share_mutex);
-		added_items += n;
-		pthread_mutex_unlock(&share_mutex);
-	}
-
-	void add_join(int n = 1) {
-		pthread_mutex_lock(&share_mutex);
-		join_num += n;
-		pthread_mutex_unlock(&share_mutex);
-	}
-};
-
-share_v sv;
+void add_nrc(int n = 1) {
+	pthread_mutex_lock(&nrc_mutex);
+	nodes_recv_complete += n;
+	pthread_mutex_unlock(&nrc_mutex);
+}
 
 template <typename Table>
 class worker_param {
@@ -134,7 +111,7 @@ static void *receive_and_build(void *param) {
     DataBlock db;
 
     // Receive until termination received from all nodes
-    while (sv.get_nrc() != hosts) {
+    while (get_nrc() != hosts) {
         while (!CL->recv_begin(&db, &src, 1));
         //printf("R - Node %d received data block from node %d with %lu records\n", local_host, src, db.size / sizeof(record_r));
         //fflush(stdout);
@@ -149,15 +126,15 @@ static void *receive_and_build(void *param) {
                 //Add the data to hash table
                 int ret;
                 if ((ret = h_table->add(r)) < 0) {
-                    printf("HashTable full!!! added items = %lu\n", sv.added_items);
+                    printf("HashTable full!!! added items = %lu\n", added_tuples);
                     fflush(stdout);
                     assert(ret >= 0);
                 } else {
-                    sv.add_items();
+                    added_tuples++;
                 }
             }
         } else {
-            sv.add_nrc();
+            add_nrc();
         }
         CL->recv_end(db, src, 1);
     }
@@ -187,7 +164,7 @@ static void *receive_and_probe(void *param) {
     DataBlock db;
 
     // Receive until termination received from all nodes
-    while (sv.get_nrc() != hosts) {
+    while (get_nrc() != hosts) {
         while (!CL->recv_begin(&db, &src, 1));
         //printf("S - Node %d received data block from node %d with %lu records\n", local_host, src, db.size / sizeof(record_s));
         //fflush(stdout);
@@ -214,11 +191,11 @@ static void *receive_and_probe(void *param) {
                     //printf("Join Result: Node %d #%d, join_key %u payload_r %u, payload_s %u %s\n", local_host, ++join_num,
                     //        s->k, r->p, s->p, valid ? "correct" : "incorrect");
                     //fflush(stdout);
-                    sv.add_join();
+                    join_num++; 
                 }
             }
         } else {
-            sv.add_nrc();
+            add_nrc();
         }
         CL->recv_end(db, src, 1);
     }
@@ -241,6 +218,7 @@ int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
 	fflush(stdout);
     HashTable *h_table = new HashTable(h_table_size);
 
+	pthread_mutex_init(&nrc_mutex, NULL);	
     // Allocate #R_SEND_THREADS threads to scan_and_send R table
 	worker_param<table_r> *param_r = new worker_param<table_r>();
 	param_r->CL = CL;
@@ -255,6 +233,8 @@ int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
     }
 
 	// Allocate #R_RECV_THREADS threads to recv_and_build R tuples
+	nodes_recv_complete = 0;
+
     for (t = R_SEND_THREADS; t < R_SEND_THREADS + R_RECV_THREADS; t++) {
         pthread_create(&worker_threads[t], NULL, &receive_and_build, (void *) param_r);
     }
@@ -264,11 +244,9 @@ int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
         void *retval;
         pthread_join(worker_threads[t], &retval);
     }
-	printf("Node %d add items %lu\n", local_host, sv.added_items);
+	printf("Node %d add items %lu\n", local_host, added_tuples);
     fflush(stdout);
 
-    sv.nodes_recv_complete = 0;
-	
 	// Allocate #S_SEND_THREADS threads to scan_and_send S table
 	worker_param<table_s> *param_s = new worker_param<table_s>();
 	param_s->CL = CL;
@@ -283,9 +261,11 @@ int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
     }
 
     // Allocate #S_RECV_THREADS threads to recv_and_probe S tuples
-    for (t = S_SEND_THREADS; t < S_SEND_THREADS + S_RECV_THREADS; t++) {
-        pthread_create(&worker_threads[t], NULL, &receive_and_probe, (void *) param_s);
-    }
+	nodes_recv_complete = 0;
+
+	for (t = S_SEND_THREADS; t < S_SEND_THREADS + S_RECV_THREADS; t++) {
+		pthread_create(&worker_threads[t], NULL, &receive_and_probe, (void *) param_s);
+	}
 
     //wait threads to finish
     for (t = 0; t < CPU_CORES; t++) {
@@ -293,7 +273,7 @@ int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
         pthread_join(worker_threads[t], &retval);
     }
 	
-	printf("Node %d JOIN NUM = %lu\n", local_host, sv.join_num);
+	printf("Node %d JOIN NUM = %lu\n", local_host, join_num);
     fflush(stdout);
 
     return 0;
