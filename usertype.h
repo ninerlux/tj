@@ -109,29 +109,6 @@ public:
     pthread_mutex_t mutex;
 };
 
-template <typename Record>
-class HashTable {
-public:
-    //local HashTable for hash join
-    //The HashTable stores keys and payloads in table R
-    HashTable(size_t size) : num(size) {
-        table = new record_r *[num];
-		hash32_factor = 79;
-    };
-
-    size_t hash32(join_key_t k);
-    int add(Record *r);
-    int find(join_key_t k, Record **r, size_t index, size_t nr_results);	//index: starting searching index
-//    int add_s(record_s *s);
-//    int find_s(join_key_t k, record_s **s, size_t index, size_t nr_results);
-	size_t getNum() {return num;}
-
-private:
-	size_t hash32_factor;
-    size_t num;
-    record_r **table;
-};
-
 struct msg {
     void *data;
     int size;

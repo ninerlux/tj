@@ -7,10 +7,10 @@ join : main.o tcp.o usertype.o TrackJoin2.o HashJoin.o ProducerConsumer.o Connec
 ConnectionLayer.o : ConnectionLayer.h ConnectionLayer.cpp
 	${CC} ${CFLAGS} -c ConnectionLayer.cpp -o ConnectionLayer.o
 
-TrackJoin2.o : Algorithms.h TrackJoin2.cpp
+TrackJoin2.o : Algorithms.h HashTable.h TrackJoin2.cpp
 	${CC} ${CFLAGS} -c TrackJoin2.cpp -o TrackJoin2.o
 
-HashJoin.o : Algorithms.h HashJoin.cpp
+HashJoin.o : Algorithms.h HashTable.h HashJoin.cpp
 	${CC} ${CFLAGS} -c HashJoin.cpp -o HashJoin.o
 
 ProducerConsumer.o : Algorithms.h ProducerConsumer.cpp
