@@ -113,19 +113,19 @@ class HashTable {
 public:
     //local HashTable for hash join
     //The HashTable stores keys and payloads in table R
-    HashTable(size_t size) : num(size) {
-        table = new record_r *[num];
+    HashTable(size_t s) : size(s) {
+        table = new record_r *[size];
 		hash32_factor = 79;
     };
 
     size_t hash32(join_key_t k);
-    int add(record_r *r);
-    int find(join_key_t k, record_r **r, size_t index, size_t nr_results);	//index: starting searching index
-	size_t getNum() {return num;}
+    size_t add(record_r *r);
+    size_t find(join_key_t k, record_r **r, size_t index, size_t nr_results);	//index: starting searching index
+	size_t getSize() {return size;}
 
 private:
 	size_t hash32_factor;
-    size_t num;
+    size_t size;
     record_r **table;
 };
 
