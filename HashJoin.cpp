@@ -162,7 +162,7 @@ static void *receive_and_probe(void *param) {
                 *s = *((record_s *)db.data + bytes_copied / sizeof(record_s));
                 bytes_copied += sizeof(record_s);
                 //Probe data in hash table
-                int ret = h_table->getNum() - 1;        //set 1st time starting searching index (ret + 1) as table size.
+                int ret = h_table->getSize() - 1;        //set 1st time starting searching index (ret + 1) as table size.
                 while ((ret = h_table->find(s->k, &r, ret + 1, 10)) >= 0) {
                     //Validate key-value mapping for r and s
                     bool valid = false;

@@ -109,6 +109,8 @@ int main(int argc, char **argv) {
         algo = new ProducerConsumer();
     } else if (strcmp(code, "hj") == 0) {
         algo = new HashJoin();
+    } else if (strcmp(code, "tj2") == 0) {
+        algo = new TrackJoin2();
     } else {
         fprintf(stderr, "Unrecognized algorithm code\n");
         return 0;

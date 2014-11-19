@@ -14,18 +14,20 @@ public:
     size_t hash32(join_key_t k);
     int add(Record *r);
     int find(join_key_t k, Record **r, size_t index, size_t nr_results);	//index: starting searching index
-    size_t getNum() {return num;}
+    size_t erase(join_key_t k, size_t index, char table_type, int &node_nr, size_t nr_results);
+    size_t getNextKey(size_t index, join_key_t &k);
+    size_t getSize() {return size;}
 
 private:
     size_t hash32_factor;
-    size_t num;
+    size_t size;
     record_r **table;
 };
 
 template <typename Record>
 size_t HashTable<Record>::hash32(join_key_t k) {
     uint64_t hash = (uint32_t) (k * hash32_factor);
-    size_t res = (hash * num) >> 32;
+    size_t res = (hash * size) >> 32;
     return res;
 }
 
@@ -43,7 +45,7 @@ int HashTable<Record>::add(Record *r) {
             } else {
                 i++;
             }
-            if (i == num) {
+            if (i == size) {
                 i = 0;
             }
         } while (i != hash_key);
@@ -64,7 +66,7 @@ int HashTable<Record>::find(join_key_t k, Record **r, size_t index, size_t nr_re
     size_t hash_key = hash32(k);
     size_t i = hash_key;
 
-    if (index < num) {
+    if (index < size) {
         i = index;
     }
 
@@ -75,12 +77,29 @@ int HashTable<Record>::find(join_key_t k, Record **r, size_t index, size_t nr_re
         } else {
             i++;
         }
-        if (i == num) {
+        if (i == size) {
             i = 0;
         }
     } while (table[i] != NULL && i != hash_key);
 
     return -1;
+}
+
+template <typename Record>
+size_t HashTable<Record>::getNextKey(size_t index, join_key_t &k) {
+    for (size_t i = index; i < size; i++) {
+        if (table[i] != NULL) {
+            k = table[i]->k;
+            return i;
+        }
+    }
+
+    return num;
+}
+
+template <typename Record>
+size_t HashTable<Record>::erase(join_key_t k, size_t index, char table_type, int &node_nr, size_t nr_results) {
+
 }
 
 #endif

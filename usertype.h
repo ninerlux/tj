@@ -32,6 +32,12 @@ struct record_s {
     s_payload_t p;
 };
 
+struct record_node {
+    join_key_t k;
+    int src;
+    char table_type; //'R' or 'S'
+};
+
 struct table_r {
     record_r *records;
     int num_bytes;
