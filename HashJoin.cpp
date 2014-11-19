@@ -124,8 +124,8 @@ static void *receive_and_build(void *param) {
                 *r = *((record_r *)db.data + bytes_copied / sizeof(record_r));
                 bytes_copied += sizeof(record_r);
                 //Add the data to hash table
-                int ret;
-                if ((ret = h_table->add(r)) < 0) {
+                size_t ret;
+                if ((ret = h_table->add(r)) == h_table->getSize()) {
                     printf("HashTable full!!! added items = %lu\n", added_tuples);
                     fflush(stdout);
                     assert(ret >= 0);
@@ -179,8 +179,8 @@ static void *receive_and_probe(void *param) {
                 //Probe data in hash table
                 //set 1st time starting searching index (ret + 1) as table size.
                 //the table size will not vary in multi threading because probing phase does not change table size
-                int ret = h_table->getNum() - 1;
-                while ((ret = h_table->find(s->k, &r, ret + 1, 10)) >= 0) {
+                size_t ret = h_table->getSize() - 1;
+                while ((ret = h_table->find(s->k, &r, ret + 1, 10)) != h_table->getSize()) {
                     //Validate key-value mapping for r and s
                     bool valid = false;
                     if (s->k == r->k && payload_to_key<r_payload_t>(r->p, 1 / 131) == payload_to_key<s_payload_t>(s->p, 1 / 181)) {

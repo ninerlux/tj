@@ -37,12 +37,12 @@ int List::addTail(ListNode * node) {
 
 size_t HashTable::hash32(join_key_t k) {
 	uint64_t hash = (uint32_t) (k * hash32_factor);
-	size_t res = (hash * num) >> 32;
+	size_t res = (hash * size) >> 32;
 	//assert(res >= 0 && res < num);
 	return res; 
 }
 
-int HashTable::add(record_r *r) {
+size_t HashTable::add(record_r *r) {
     size_t hash_key = hash32(r->k);
     size_t i = hash_key;
 
@@ -55,7 +55,7 @@ int HashTable::add(record_r *r) {
             } else {
                 i++;
             }
-            if (i == num) {
+            if (i == size) {
                 i = 0;
             }
         } while (i != hash_key);
@@ -71,11 +71,11 @@ int HashTable::add(record_r *r) {
     }
 }
 
-int HashTable::find(join_key_t k, record_r **r, size_t index, size_t nr_results) {
+size_t HashTable::find(join_key_t k, record_r **r, size_t index, size_t nr_results) {
     size_t hash_key = hash32(k);
     size_t i = hash_key;
 
-	if (index < num) {
+	if (index < size) {
 		i = index;
 	}
 
@@ -86,7 +86,7 @@ int HashTable::find(join_key_t k, record_r **r, size_t index, size_t nr_results)
         } else {
             i++;
         }
-        if (i == num) {
+        if (i == size) {
             i = 0;
         }
     } while (table[i] != NULL && i != hash_key);
