@@ -77,7 +77,10 @@ int HashTable::find(join_key_t k, record_r **r, size_t index, size_t nr_results)
 
 	if (index < num) {
 		i = index;
+	} else if (index == num) {
+		i = 0;
 	}
+
 
     do {
         if (table[i] != NULL && table[i]->k == k) {
