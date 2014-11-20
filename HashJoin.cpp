@@ -205,11 +205,12 @@ static void *receive_and_probe(void *param) {
 						//printf("Node %d I AM HERE 333  !! nrc %d join_num %lu key %u ret %d\n", local_host, nodes_recv_complete, join_num, s->k, ret);
 		
 						//Validate key-value mapping for r and s
-						bool valid = false;
-						if (s->k == r->k && payload_to_key<r_payload_t>(r->p, 1 / 131) == payload_to_key<s_payload_t>(s->p, 1 / 181)) {
-							valid = true;
-						}
-						assert(valid == true);
+						//bool valid = false;
+						//if (s->k == r->k && payload_to_key<r_payload_t>(r->p, 1 / 131) == payload_to_key<s_payload_t>(s->p, 1 / 181)) {
+						//	valid = true;
+						//}
+						//assert(valid == true);
+
 						//Output joined tuples
 						//printf("Join Result: Node %d #%d, join_key %u payload_r %u, payload_s %u %s\n", local_host, ++join_num,
 						//        s->k, r->p, s->p, valid ? "correct" : "incorrect");
