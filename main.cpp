@@ -103,7 +103,7 @@ int main(int argc, char **argv) {
 
     struct table_r R;
     struct table_s S;
-    create_table(R, atol(argv[2]) * 1024 * 1024, S, atol(argv[2]) * 1024 * 1024 * atol(argv[3]));
+    create_table(R, atol(argv[2]) * 32, S, atol(argv[2]) * 32 * atol(argv[3]));
 
     if (strcmp(code, "test") == 0) {
         algo = new ProducerConsumer();
