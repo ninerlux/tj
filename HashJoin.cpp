@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <pthread.h>
 
 #include "Algorithms.h"
@@ -21,6 +22,7 @@ int nodes_recv_complete;
 pthread_mutex_t nrc_mutex;
 	
 size_t added_tuples = 0;
+size_t queried_num = 0;
 size_t join_num = 0;
 
 int get_nrc() {
@@ -116,9 +118,9 @@ static void *receive_and_build(void *param) {
     DataBlock db;
 
     // Receive until termination received from all nodes
-    while (get_nrc() < hosts) {
+    while (nodes_recv_complete < hosts) {
 		int ret;
-		while ((ret = CL->recv_begin(&db, &src, tag)) == 0 && get_nrc() < hosts);
+		while ((ret = CL->recv_begin(&db, &src, tag)) == 0 && nodes_recv_complete < hosts);
 		if (ret != 0) {
 			//printf("R - Node %d received data block from node %d with %lu records\n", local_host, src, db.size / sizeof(record_r));
 			//fflush(stdout);
@@ -169,7 +171,7 @@ static void *receive_and_probe(void *param) {
 	int tag = p->tag;
 
     int hosts = CL->get_hosts();
-    int local_host = CL->get_local_host();
+    //int local_host = CL->get_local_host();
 
     int src;
     record_s *s;
@@ -177,9 +179,9 @@ static void *receive_and_probe(void *param) {
     DataBlock db;
 
     // Receive until termination received from all nodes
-    while (get_nrc() < hosts) {
+    while (nodes_recv_complete < hosts) {
 		int ret;
-		while ((ret = CL->recv_begin(&db, &src, tag)) == 0 && get_nrc() < hosts) {
+		while ((ret = CL->recv_begin(&db, &src, tag)) == 0 && nodes_recv_complete < hosts) {
 			//printf("Node %d BLOCKING HERE!! nrc %d\n", local_host, get_nrc());
 			//fflush(stdout);
 		}
@@ -198,6 +200,7 @@ static void *receive_and_probe(void *param) {
 					//Probe data in hash table
 					ret = h_table->getNum();        //set 1st time starting searching index (ret + 1) as table size + 1.
 					//printf("Node %d I AM HERE 222 !! nrc %d\n", local_host, nodes_recv_complete);
+					queried_num++;
 					while ((ret = h_table->find(s->k, &r, ret + 1, 10)) >= 0) {
 						//printf("Node %d I AM HERE 333  !! nrc %d join_num %lu key %u ret %d\n", local_host, nodes_recv_complete, join_num, s->k, ret);
 		
@@ -243,6 +246,11 @@ int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
     HashTable *h_table = new HashTable(h_table_size);
 
 	pthread_mutex_init(&nrc_mutex, NULL);
+
+	int times, timed;
+
+	times = time(NULL);
+
 	// Allocate #R_SEND_THREADS threads to scan_and_send R table
 	size_t interval = R->num_records / R_SEND_THREADS;
 	for (t = 0; t < R_SEND_THREADS; t++) {
@@ -341,8 +349,11 @@ int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
         pthread_join(worker_threads[t], &retval);
     }
 
-	printf("Node %d JOIN NUM = %lu\n", local_host, join_num);
+	printf("Node %d JOIN NUM = %lu, queried num = %lu\n", local_host, join_num, queried_num);
     fflush(stdout);
+
+	timed = time(NULL);
+	printf("Total time taken: %ds\n", timed - times);
 
     return 0;
 }
