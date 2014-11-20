@@ -233,7 +233,7 @@ int ConnectionLayer::recv_begin(DataBlock *db, int *src, int tag) {
 
         // Check if largest_full_list_size > 0
         // Necessary because we checked the num before locking
-        if (largest_full_list_size > 0) {
+        if (full_list[tag][RECV][largest_full_list_index].getNum() > 0) {
             break;
         } else {
             pthread_mutex_unlock(&full_list[tag][RECV][largest_full_list_index].mutex);
@@ -501,32 +501,36 @@ void *ConnectionLayer::writeToSocket(void *param) {
             continue;
         }
 
-        size_t n;
+		int n;
+		size_t r = 0;
+		while (r < sizeof(node->db.size)) {
+			n = write(conn_fd, (char *) &(node->db.size) + r, sizeof(node->db.size) - r);
+			if (n < 0) {
+				printf("writeToSocket: error on writing to dest %d on tag %d\n", dest, tag);
+				pthread_exit(NULL);
+			}
+			r += n;
+		}
 
-        n = write(conn_fd, &node->db.size, sizeof(node->db.size));
+		if (n != sizeof(node->db.size)) {
+			printf("writeToSocket: error - partial writing to dest %d on tag %d with size %d\n", dest, tag, n);
+			pthread_exit(NULL);
+		}
 
-        if (n < 0) {
-            printf("writeToSocket: error on writing to dest %d on tag %d\n", dest, tag);
-            pthread_exit(NULL);
-        }
+		r = 0;
+		while (r < node->db.size) {
+			n = write(conn_fd, (char *) node->db.data + r, node->db.size - r);
+			if (n < 0) {
+				printf("writeToSocket: error on writing to dest %d on tag %d\n", dest, tag);
+				pthread_exit(NULL);
+			}
+			r += n;
+		}
 
-        if (n != sizeof(node->db.size)) {
-            printf("writeToSocket: error - partial writing to dest %d on tag %d with size %lu\n", dest, tag, n);
-            pthread_exit(NULL);
-        }
-
-        n = write(conn_fd, node->db.data, node->db.size);
-
-        if (n < 0) {
-            printf("writeToSocket: error on writing to dest %d on tag %d\n", dest, tag);
-            pthread_exit(NULL);
-        }
-
-        if (n != node->db.size) {
-            printf("writeToSocket: error - partial writing to dest %d on tag %d with size %lu\n", dest, tag, n);
-            pthread_exit(NULL);
-        }
-
+		if (r != node->db.size) {
+			printf("writeToSocket: error - partial writing to dest %d on tag %d with size %d\n", dest, tag, n);
+			pthread_exit(NULL);
+		}
         // Add the node to the tail of the 'free' send list
         pthread_mutex_lock(&free_list[tag][SEND][dest].mutex);
 		node->db.size = 0;
