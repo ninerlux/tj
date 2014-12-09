@@ -13,8 +13,8 @@
 #define BUFFER_SIZE 4096 	//set BUFFER_SIZE equal to BLOCK_SIZE to read one block of data each time
 #define MAX_BLOCKS_PER_LIST 100000 // Number of blocks initially allocated to the free list
 
-#define BYTES_PAYLOAD_R 4
-#define BYTES_PAYLOAD_S 4
+#define BYTES_PAYLOAD_R 8
+#define BYTES_PAYLOAD_S 8
 
 using namespace std;
 

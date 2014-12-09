@@ -77,6 +77,8 @@ size_t HashTable::find(join_key_t k, record_r **r, size_t index, size_t nr_resul
 
 	if (index < size) {
 		i = index;
+	} else if (index == size) {
+		i = 0;
 	}
 
     do {
