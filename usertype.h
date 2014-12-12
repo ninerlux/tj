@@ -32,10 +32,10 @@ struct record_s {
     s_payload_t p;
 };
 
-struct record_node {
+struct record_key {
     join_key_t k;
     int src;
-    char table_type; //'R' or 'S'
+    char table_type; //'R' or 'S' or 'U' (marked as used)
 };
 
 struct table_r {
