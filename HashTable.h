@@ -110,7 +110,7 @@ size_t HashTable<Record>::getNextKey(size_t index, join_key_t &k) {
 // used only for record_key type
 template<typename Record>
 size_t HashTable<Record>::markUsed(join_key_t k, size_t index, char table_type, int &node_nr, size_t nr_results) {
-    int i = index;
+    size_t i = index;
     if (index == size) {
         i = 0;
     }

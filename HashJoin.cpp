@@ -68,7 +68,7 @@ static void *scan_and_send(void *param) {
         dbs[dest].size = 0;
     }
     // Send each record in T to destination node
-    for (int i = start; i < end; i++) {
+    for (size_t i = start; i < end; i++) {
         // hash each record's join key to get destination node number
         // hash() is the hash function of hash table. It is like "key % p", where p is a very large prime
         dest = h_table->hash32(T->records[i].k) % hosts;
