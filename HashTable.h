@@ -1,6 +1,10 @@
 #ifndef _HASHTABLE_H_
 #define _HASHTABLE_H_
 
+#include <stdio.h>
+
+using namespace std;
+
 template<typename Record>
 class HashTable {
 public:
@@ -14,7 +18,6 @@ public:
     size_t hash32(join_key_t k);
 
     size_t add(Record *r);
-
     size_t find(join_key_t k, Record **r, size_t index, size_t nr_results);    //index: starting searching index
     size_t markUsed(join_key_t k, size_t index, char table_type, int &node_nr, size_t nr_results);
 
@@ -24,10 +27,13 @@ public:
         return size;
     }
 
+	void printAll(int local_host);
+	Record **table;
+
 private:
     size_t hash32_factor;
     size_t size;
-    Record **table;
+    //Record **table;
 };
 
 template<typename Record>
@@ -38,11 +44,25 @@ size_t HashTable<Record>::hash32(join_key_t k) {
 }
 
 template<typename Record>
+void HashTable<Record>::printAll(int local_host) {
+	//printf("HashTable - printAll\n");
+	//fflush(stdout);
+	for (size_t i = 0; i < size; i++) {
+		if (table[i] != NULL) {
+			printf("HashTable - printAll: Node %d, index %lu: key %u, src %u, type %c\n", local_host, i, table[i]->k, table[i]->src, table[i]->table_type);
+			fflush(stdout);
+		} 
+	}
+
+}
+
+template<typename Record>
 size_t HashTable<Record>::add(Record *r) {
     size_t hash_key = hash32(r->k);
     size_t i = hash_key;
 
     while (true) {
+		//printf("inside add! key = %u\n", r->k);
         bool has_slot = false;
         do {
             if (table[i] == NULL) {
@@ -97,14 +117,14 @@ size_t HashTable<Record>::find(join_key_t k, Record **r, size_t index, size_t nr
 
 template<typename Record>
 size_t HashTable<Record>::getNextKey(size_t index, join_key_t &k) {
-    for (size_t i = index; i < size; i++) {
-        if (table[i] != NULL) {
-            k = table[i]->k;
-            return i;
-        }
-    }
+	for (size_t i = index; i < size; i++) {
+		if (table[i] != NULL && table[i]->table_type != 'U') {
+			k = table[i]->k;
+			return i;
+		}
+	}
 
-    return size;
+	return size;
 }
 
 // used only for record_key type

@@ -20,7 +20,7 @@ public:
 };
 
 int TrackJoin2::get_tags() {
-    return 3;
+    return 4;
 }
 
 template <typename Table, typename Record>
@@ -32,6 +32,7 @@ static void *scan_and_send(void *param) {
     HashTable<Record> *h_table = p->h;
 
     int hosts = CL->get_hosts();
+	//int local_host = CL->get_local_host();
 
     int dest;
     DataBlock *dbs = new DataBlock[hosts];
@@ -43,15 +44,17 @@ static void *scan_and_send(void *param) {
 
     Record *r = NULL;
     // Send each record in T to destination node
-    for (int i = 0; i < T->num_records; i++) {
+    for (size_t i = 0; i < T->num_records; i++) {
         // check if key is duplicate
+		//printf("Scan - Node %d traverse data block key = %u, payload = %u, tag = %d\n", local_host, T->records[i].k, T->records[i].p, tag);
+		//fflush(stdout);
         if (h_table->find(T->records[i].k, &r, h_table->getSize() + 1, 10) == h_table->getSize()) {
             dest = h_table->hash32(T->records[i].k) % hosts;
             if (dbs[dest].size + sizeof(join_key_t) > BLOCK_SIZE) {
                 //msgs are sent to process T
                 //If tag is 0, it is sent from R; if tag is 1, it is sent from S
                 CL->send_end(dbs[dest], dest, tag);
-                //printf("Scan - Node %d send data block to node %d with %lu records\n", local_host, dest, dbs[dest].size / sizeof(Record));
+                //printf("Scan1 - Node %d send data block to node %d with %lu records, tag = %d\n", local_host, dest, dbs[dest].size / sizeof(join_key_t), tag);
                 //fflush(stdout);
                 while (!CL->send_begin(&dbs[dest], dest, tag));
                 dbs[dest].size = 0;
@@ -69,14 +72,14 @@ static void *scan_and_send(void *param) {
         if (dbs[dest].size > 0) {
             assert(dbs[dest].size <= BLOCK_SIZE);
             CL->send_end(dbs[dest], dest, tag);
-            //printf("Scan - Node %d send data block to node %d with %lu records\n", local_host, dest, dbs[dest].size / sizeof(Record));
+            //printf("Scan2 - Node %d send data block to node %d with %lu records, tag = %d\n", local_host, dest, dbs[dest].size / sizeof(join_key_t), tag);
             //fflush(stdout);
         }
         // Send end flags
         while (!CL->send_begin(&dbs[dest], dest, tag));
         dbs[dest].size = 0;
         CL->send_end(dbs[dest], dest, tag);
-        //printf("Scan - Node %d send end flag node %d with size %lu\n", local_host, dest, dbs[dest].size);
+        //printf("Scan3 - Node %d send end flag node %d with size %lu, tag = %d\n", local_host, dest, dbs[dest].size, tag);
         //fflush(stdout);
     }
 
@@ -91,7 +94,7 @@ static void *recv_keys(void *param) {
     HashTable<record_key> *h_table = p->h;
 
     int hosts = CL->get_hosts();
-    //int local_host = CL->get_local_host();
+    int local_host = CL->get_local_host();
 
     int src;
     record_key *r;
@@ -107,11 +110,15 @@ static void *recv_keys(void *param) {
             while (bytes_copied < db.size) {
                 r = new record_key();
                 assert(bytes_copied + sizeof(join_key_t) <= db.size);
-                memcpy(&r->k, db.data, sizeof(join_key_t));
-                r->src = src;
+                r->k = *((join_key_t *)db.data + bytes_copied / sizeof(join_key_t));
+				r->src = (uint8_t)src;
                 r->table_type = (tag == 0 ? 'R' : 'S');
 
+				printf("recv_keys: Node %d recv_key = %u, src = %u, type = %c\n", local_host, r->k, r->src, r->table_type);
+				fflush(stdout);
                 h_table->add(r);
+				//printf("recv_keys: Node %d, res = %lu, table_r_k %u\n", local_host, res, h_table->table[res]->k);
+				//fflush(stdout);
 
                 bytes_copied += sizeof(join_key_t);
             }
@@ -120,6 +127,9 @@ static void *recv_keys(void *param) {
         }
         CL->recv_end(db, src, tag);
     }
+
+	printf("Node %d recv_key from tag %d FINISHED \n", local_host, tag);
+	fflush(stdout);
 
 	return NULL;
 }
@@ -132,21 +142,29 @@ static void *notify_nodes(void *param) {
     HashTable<record_key> *h_table = p->h;
 
     int hosts = CL->get_hosts();
-    //int local_host = CL->get_local_host();
+    int local_host = CL->get_local_host();
 
-    DataBlock *dbs = new DataBlock[hosts];
-    // prepare data blocks for each destination
-    int dest;
-    for (dest = 0; dest < hosts; dest++) {
-        while (!CL->send_begin(&dbs[dest], dest, tag));
-        dbs[dest].size = 0;
-    }
+	printf("Node %d, notify_nodes begin!!! \n", local_host);
+	fflush(stdout);
 
-    size_t table_size = h_table->getSize();
-    size_t k_index = -1;
-    join_key_t k;
+	DataBlock *dbs = new DataBlock[hosts];
+	// prepare data blocks for each destination
+	int dest;
+	for (dest = 0; dest < hosts; dest++) {
+		while (!CL->send_begin(&dbs[dest], dest, tag));
+		dbs[dest].size = 0;
+	}
+	
+	printf("Node %d, notify_nodes 1111111111!!! \n", local_host);
+	fflush(stdout);
+
+	size_t table_size = h_table->getSize();
+	size_t k_index = -1;
+	join_key_t k;
     // for all distinct key k in hash table
     while ((k_index = h_table->getNextKey(k_index + 1, k)) != table_size) {
+		printf("notify_nodes: Node %d, key %u\n", local_host, h_table->table[k_index]->k);
+		fflush(stdout);
         size_t r_index = k_index - 1;
         int node_r = -1;
         // for all <k, node_r> in table
@@ -287,17 +305,21 @@ static void *join_tuple(void *param) {
 int TrackJoin2::run(ConnectionLayer * CL, struct table_r *R, struct table_s *S) {
     int t;
     worker_threads = new pthread_t[32];
+	int local_host = CL->get_local_host();
 
     size_t h_table_r_size = R->num_records / 0.5;
     size_t h_table_s_size = S->num_records / 0.5;
     size_t h_table_key_size = (R->num_records + S->num_records) / 0.5;
 
-    printf("R hash table size = %lu, S hash table size = %lu\n", h_table_r_size, h_table_s_size);
+    printf("Node %d, R hash table size = %lu, S hash table size = %lu\n", local_host, h_table_r_size, h_table_s_size);
     fflush(stdout);
 
     HashTable<record_r> *h_table_r = new HashTable<record_r>(h_table_r_size);
     HashTable<record_s> *h_table_s = new HashTable<record_s>(h_table_s_size);
     HashTable<record_key> *h_table_key = new HashTable<record_key>(h_table_key_size);
+
+	//printf("Node %d, after create 3 hash tables\n", local_host);
+	//fflush(stdout);
 
     // start R table scan_and_send
     worker_param<table_r, record_r> *param_r = new worker_param<table_r, record_r>();
@@ -323,14 +345,22 @@ int TrackJoin2::run(ConnectionLayer * CL, struct table_r *R, struct table_s *S) 
         param_t->h = h_table_key;
         pthread_create(&worker_threads[t + 2], NULL, &recv_keys, (void *) param_t);
     }
+	
+	// barrier
+	for (t = 0; t < 4; t++) {
+		void *retval;
+		pthread_join(worker_threads[t], &retval);
+	}
 
-    // barrier
-    for (t = 0; t < 4; t++) {
-        void *retval;
-        pthread_join(worker_threads[t], &retval);
-    }
+	printf("Node %d, h_table_key size = %lu\n", local_host, h_table_key->getSize());
+	fflush(stdout);
+	h_table_key->printAll(local_host);
 
-    // notify R processes
+	printf("Node %d, after print h_table_key +++++++++++ \n", local_host);
+	fflush(stdout);
+
+
+	// notify R processes
     worker_param<table_r, record_key> *param_t = new worker_param<table_r, record_key>();
     param_t->CL = CL;
     param_t->tag = 2;

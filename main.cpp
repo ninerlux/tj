@@ -46,12 +46,13 @@ payload_t key_to_payload(join_key_t k, float a) {
 }
 
 void create_table(table_r &R, long r_bytes, table_s &S, long s_bytes) {
-    int i, j;
+    size_t i, j;
 
     R.num_bytes = r_bytes;
     R.num_records = r_bytes / sizeof(record_r);
 
-    printf("Create R: size of record_r %lu, num of records = %d\n", sizeof(record_r), R.num_records);
+    printf("Create R: size of record_r %lu, num of records = %lu\n", sizeof(record_r), R.num_records);
+	fflush(stdout);
 
     R.records = (struct record_r *) malloc(r_bytes);
     if (R.records == NULL) {
@@ -61,7 +62,7 @@ void create_table(table_r &R, long r_bytes, table_s &S, long s_bytes) {
     for (i = 0; i < R.num_records; i++) {
         join_key_t rand;
         while ((rand = (uint32_t) random()) == 0);
-        R.records[i].k = rand;
+        R.records[i].k = rand % 10;
         for (int b = 0; b < BYTES_PAYLOAD_R; b++) {
             R.records[i].p.bytes[b] = ((uint8_t) R.records[i].k) + 1;
         }
@@ -70,7 +71,8 @@ void create_table(table_r &R, long r_bytes, table_s &S, long s_bytes) {
     S.num_bytes = s_bytes;
     S.num_records = s_bytes / sizeof(record_s);
 
-    printf("Create S: num of records = %d\n", S.num_records);
+    printf("Create S: size of record_s %lu, num of records = %lu\n", sizeof(record_s), S.num_records);
+	fflush(stdout);
 
     S.records = (struct record_s *) malloc(s_bytes);
     if (S.records == NULL) {
@@ -80,7 +82,7 @@ void create_table(table_r &R, long r_bytes, table_s &S, long s_bytes) {
     for (j = 0; j < S.num_records; j++) {
         join_key_t rand;
         while ((rand = (uint32_t) random()) == 0);
-        S.records[j].k = rand;
+        S.records[j].k = rand % 10;
         for (int b = 0; b < BYTES_PAYLOAD_S; b++) {
             S.records[j].p.bytes[b] = ((uint8_t) S.records[j].k) + 1;
         }

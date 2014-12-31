@@ -34,20 +34,20 @@ struct record_s {
 
 struct record_key {
     join_key_t k;
-    int src;
+    uint8_t src;
     char table_type; //'R' or 'S' or 'U' (marked as used)
 };
 
 struct table_r {
     record_r *records;
     int num_bytes;
-    int num_records;
+    size_t num_records;
 };
 
 struct table_s {
     record_s *records;
     int num_bytes;
-    int num_records;
+    size_t num_records;
 };
 
 struct DataBlock {
