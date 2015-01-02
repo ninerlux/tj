@@ -50,6 +50,11 @@ struct table_s {
     size_t num_records;
 };
 
+struct msg_key_int {
+	join_key_t k;
+	int content;
+};
+
 struct DataBlock {
     DataBlock() {
         data = NULL;
@@ -114,14 +119,14 @@ public:
     size_t num;
     pthread_mutex_t mutex;
 };
-
+/*
 struct msg {
     void *data;
     int size;
     int tag;
     int node;		//either source of destionation node (depending on direction)
 };
-
+*/
 //parameters to pass to each thread
 struct thr_param {
     int node;       	// either source or destination node (depending on direction)
