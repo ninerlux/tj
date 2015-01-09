@@ -35,4 +35,10 @@ public:
 	int run(ConnectionLayer *, struct table_r *, struct table_s *);
 };
 
+class TrackJoin4 : public AbstractAlgo {
+public:
+    int get_tags();
+    int run(ConnectionLayer *, struct table_r *, struct table_s *);
+};
+
 #endif

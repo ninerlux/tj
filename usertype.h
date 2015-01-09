@@ -36,6 +36,20 @@ struct record_key {
     join_key_t k;
     uint8_t src;
     char table_type; //'R' or 'S' or 'U' (marked as used)
+    bool visited;
+};
+
+struct record_count {
+    int src;
+    int count;
+};
+
+struct record_key_count {
+    join_key_t k;
+    uint8_t src;
+    char table_type;
+    int count;
+    bool visited;
 };
 
 struct table_r {
@@ -119,15 +133,8 @@ public:
     size_t num;
     pthread_mutex_t mutex;
 };
-/*
-struct msg {
-    void *data;
-    int size;
-    int tag;
-    int node;		//either source of destionation node (depending on direction)
-};
-*/
-//parameters to pass to each thread
+
+//parameters to pass to each communication thread
 struct thr_param {
     int node;       	// either source or destination node (depending on direction)
     int tag;

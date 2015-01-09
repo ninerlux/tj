@@ -8,8 +8,6 @@ using namespace std;
 template<typename Record>
 class HashTable {
 public:
-    //local HashTable for hash join
-    //The HashTable stores keys and payloads in table R
     HashTable(size_t s) : size(s) {
         table = new Record *[size];
         hash32_factor = 79;
@@ -18,10 +16,12 @@ public:
     size_t hash32(join_key_t k);
 
     size_t add(Record *r);
+    size_t del(size_t index);
+    size_t update(Record *r, size_t index);
     size_t find(join_key_t k, Record **r, size_t index, size_t nr_results);    //index: starting searching index
-    size_t markUsed(join_key_t k, size_t index, char table_type, int &node_nr, size_t nr_results);
+    size_t markVisited(join_key_t k, size_t index, char table_type, Record **r, bool visited);
 
-    size_t getNextKey(size_t index, join_key_t &k);
+    size_t getNextKey(size_t index, join_key_t &k, bool visited);
 
     size_t getSize() {
         return size;
@@ -53,7 +53,6 @@ void HashTable<Record>::printAll(int local_host) {
 			fflush(stdout);
 		} 
 	}
-
 }
 
 template<typename Record>
@@ -88,6 +87,30 @@ size_t HashTable<Record>::add(Record *r) {
 }
 
 template<typename Record>
+size_t HashTable<Record>::del(size_t index) {
+    if (index > 0 && index < size && table[index] != NULL) {
+        delete table[index];
+        table[index] = NULL;
+        return index;
+    }
+
+    return size;
+}
+
+template<typename Record>
+size_t HashTable<Record>::update(Record *r, size_t index) {
+    if (index > 0 && index < size) {
+        // notice that *r will be revoked later as it is a local variable
+        // so we need to copy value here instead of address
+        *(table[index]) = *r;
+        return index;
+    }
+
+    return size;
+}
+
+
+template<typename Record>
 size_t HashTable<Record>::find(join_key_t k, Record **r, size_t index, size_t nr_results) {
     size_t hash_key = hash32(k);
     size_t i = hash_key;
@@ -116,9 +139,9 @@ size_t HashTable<Record>::find(join_key_t k, Record **r, size_t index, size_t nr
 }
 
 template<typename Record>
-size_t HashTable<Record>::getNextKey(size_t index, join_key_t &k) {
+size_t HashTable<Record>::getNextKey(size_t index, join_key_t &k, bool visited) {
 	for (size_t i = index; i < size; i++) {
-		if (table[i] != NULL && table[i]->table_type != 'U') {
+		if (table[i] != NULL && table[i]->visited != visited) {
 			k = table[i]->k;
 			return i;
 		}
@@ -129,7 +152,7 @@ size_t HashTable<Record>::getNextKey(size_t index, join_key_t &k) {
 
 // used only for record_key type
 template<typename Record>
-size_t HashTable<Record>::markUsed(join_key_t k, size_t index, char table_type, int &node_nr, size_t nr_results) {
+size_t HashTable<Record>::markVisited(join_key_t k, size_t index, char table_type, Record **r, bool visited) {
     size_t i = index;
     if (index == size) {
         i = 0;
@@ -137,9 +160,10 @@ size_t HashTable<Record>::markUsed(join_key_t k, size_t index, char table_type, 
 
     do {
         if (table[i] != NULL) {
-            if (table[i]->table_type == table_type && table[i]->k == k) {
-                node_nr = table[i]->src;
-                table[i]->table_type = 'U';
+            if (table[i]->k == k && (table_type == 'N' || table[i]->table_type == table_type)) {
+                *r = table[i];
+                // mark it as visited
+                table[i]->visited = visited;
                 return i;
             } else {
                 i++;
