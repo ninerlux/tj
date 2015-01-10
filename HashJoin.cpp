@@ -163,7 +163,7 @@ static void *receive_and_probe(void *param) {
     int tag = p->tag;
 
     int hosts = CL->get_hosts();
-    //int local_host = CL->get_local_host();
+    int local_host = CL->get_local_host();
 
     int src;
     record_s *s;
@@ -196,14 +196,15 @@ static void *receive_and_probe(void *param) {
                     queried_num++;
                     while ((pos = h_table->find(s->k, &r, pos + 1, 10)) != h_table->getSize()) {
                         //Validate key-value mapping for r and s
-                        //bool valid = false;
+                        // bool valid = false;
+						bool valid = true;
                         //if (s->k == r->k && payload_to_key<r_payload_t>(r->p, 1 / 131) == payload_to_key<s_payload_t>(s->p, 1 / 181)) {
                         //    valid = true;
                         //}
                         //assert(valid == true);
                         //Output joined tuples
-                        //printf("Join Result: Node %d #%d, join_key %u payload_r %u, payload_s %u %s\n", local_host, ++hashjoin_num,
-                        //        s->k, r->p, s->p, valid ? "correct" : "incorrect");
+                        //printf("Join Result: Node %d #%d, join_key_r %u join_key_s %u payload_r %u, payload_s %u %s\n", local_host, ++hashjoin_num,
+                        //        r->k, s->k, r->p, s->p, valid ? "correct" : "incorrect");
                         //fflush(stdout);
                         hashjoin_num++;
                     }
@@ -229,7 +230,7 @@ int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
     worker_threads = new pthread_t[16];
 
     //create HashTable h_table
-	size_t h_table_size = R->num_records / 0.5;
+	size_t h_table_size = R->num_records / 0.1;
 	printf("hash table size = %lu\n", h_table_size);
 	fflush(stdout);
 

@@ -40,7 +40,7 @@ template<typename Record>
 size_t HashTable<Record>::hash32(join_key_t k) {
     uint64_t hash = (uint32_t)(k * hash32_factor);
     size_t res = (hash * size) >> 32;
-    return res;
+    return res % size;
 }
 
 template<typename Record>
