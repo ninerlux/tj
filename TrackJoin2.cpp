@@ -350,8 +350,8 @@ static void *join_tuple(void *param) {
     int hosts = CL->get_hosts();
     int local_host = CL->get_local_host();
 
-    //printf("Node %d, join_tuple begin!!!, tag = %d\n", local_host, tag);
-    //fflush(stdout);
+    printf("Node %d, join_tuple begin!!!, tag = %d\n", local_host, tag);
+    fflush(stdout);
 
     int src;
     DataBlock db_recv;
@@ -361,8 +361,12 @@ static void *join_tuple(void *param) {
 
     int t = 0;
     while (t != hosts) {
-        while (!CL->recv_begin(&db_recv, &src, tag));
+        while (!CL->recv_begin(&db_recv, &src, tag)) {
+			//printf("Node %d I am here!!, tag %d, t = %d\n", local_host, tag, t);
+		}
         assert(db_recv.size <= BLOCK_SIZE);
+
+		//printf("Node %d, here 1\n", local_host);	
 
         if (db_recv.size > 0) {
             size_t bytes_copied = 0;
@@ -371,7 +375,8 @@ static void *join_tuple(void *param) {
                 assert(bytes_copied + sizeof(record_r) <= db_recv.size);
                 *r = *((record_r *) db_recv.data + bytes_copied / sizeof(record_r));
                 size_t pos = h_table->getSize();
-
+				
+				//printf("Node %d, here 2\n", local_host);
                 while ((pos = h_table->find(r->k, &s, pos + 1, 10)) != h_table->getSize()) {
                     bool valid = true;
                     //printf("Join Result: Node %d #%lu, src %d, join_key %u payload_r %u, payload_s %u %s\n", local_host, src, 
@@ -397,7 +402,7 @@ static void *join_tuple(void *param) {
 
 int TrackJoin2::run(ConnectionLayer *CL, struct table_r *R, struct table_s *S) {
     int t;
-    worker_threads = new pthread_t[32];
+    worker_threads = new pthread_t[16];
     int local_host = CL->get_local_host();
 
     size_t h_table_r_size = R->num_records / 0.5;
@@ -485,7 +490,7 @@ int TrackJoin2::run(ConnectionLayer *CL, struct table_r *R, struct table_s *S) {
     fflush(stdout);
 
     timed = time(NULL);
-    printf("Total time taken: %ds\n", timed - times);
+    printf("Node %d Total time taken: %ds\n", local_host, timed - times);
 
     delete h_table_r;
     delete h_table_s;

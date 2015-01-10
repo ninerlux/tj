@@ -58,7 +58,7 @@ static void *scan_and_send(void *param) {
 	HashTable<Record> *h_table = p->h;
 
     int hosts = CL->get_hosts();
-    //int local_host = CL->get_local_host();
+    int local_host = CL->get_local_host();
 
     DataBlock *dbs = new DataBlock[hosts];
     // prepare data blocks for each destination
@@ -71,6 +71,8 @@ static void *scan_and_send(void *param) {
     for (size_t i = start; i < end; i++) {
         // hash each record's join key to get destination node number
         // hash() is the hash function of hash table. It is like "key % p", where p is a very large prime
+		//printf("Scan - Node %d #%d key = %u tag = %d\n", local_host, i, T->records[i].k, tag);
+		//fflush(stdout);
         dest = h_table->hash32(T->records[i].k) % hosts;
         if (dbs[dest].size + sizeof(Record) > BLOCK_SIZE) {
             CL->send_end(dbs[dest], dest, tag);

@@ -62,7 +62,7 @@ void create_table(table_r &R, long r_bytes, table_s &S, long s_bytes) {
     for (i = 0; i < R.num_records; i++) {
         join_key_t rand;
         while ((rand = (uint32_t) random()) == 0);
-        R.records[i].k = rand % 10;
+        R.records[i].k = i % 10;
         for (int b = 0; b < BYTES_PAYLOAD_R; b++) {
             R.records[i].p.bytes[b] = ((uint8_t) R.records[i].k) + 1;
         }
@@ -82,7 +82,7 @@ void create_table(table_r &R, long r_bytes, table_s &S, long s_bytes) {
     for (j = 0; j < S.num_records; j++) {
         join_key_t rand;
         while ((rand = (uint32_t) random()) == 0);
-        S.records[j].k = rand % 10;
+        S.records[j].k = j % 10;
         for (int b = 0; b < BYTES_PAYLOAD_S; b++) {
             S.records[j].p.bytes[b] = ((uint8_t) S.records[j].k) + 1;
         }
