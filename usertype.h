@@ -5,7 +5,6 @@
 #include <stdint.h>
 #include <unordered_map>
 
-#define MAX_TAG 3
 #define MAX_NODES 255
 #define MAX_CORES 32
 
