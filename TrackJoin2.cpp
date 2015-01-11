@@ -8,7 +8,32 @@
 #include <assert.h>
 #include <unistd.h>
 
+#define CPU_CORES 16
+#define R_SCAN_THREADS 4
+#define S_SCAN_THREADS 4
+#define RECV_R_THREADS 4
+#define RECV_S_THREADS 4
+#define T_NOTI_THREADS 1
+#define R_SEND_THREADS 7
+#define S_COMT_THREADS 8
+
+int *recv_complete_tj2 = new int[4];
+pthread_mutex_t *rc_mutex_tj2 = new pthread_mutex_t[4];
+
 size_t trackjoin2_num = 0;
+
+int get_rc_tj2(int index) {
+    pthread_mutex_lock(&rc_mutex_tj2[index]);
+    int r = recv_complete_tj2[index];
+    pthread_mutex_unlock(&rc_mutex_tj2[index]);
+    return r;
+}
+
+void add_rc_tj2(int index, int n = 1) {
+    pthread_mutex_lock(&rc_mutex_tj2[index]);
+    recv_complete_tj2[index] += n;
+    pthread_mutex_unlock(&rc_mutex_tj2[index]);
+}
 
 template<typename Table, typename Record>
 class worker_param {
@@ -30,6 +55,8 @@ static void *scan_and_send(void *param) {
     ConnectionLayer *CL = p->CL;
     int tag = p->tag;
     Table *T = p->t;
+    size_t start = p->start_index;
+    size_t end = p->end_index;
     HashTable<Record> *h_table = p->h;
 
     int hosts = CL->get_hosts();
@@ -45,10 +72,10 @@ static void *scan_and_send(void *param) {
 
     Record *r = NULL;
     // Send each record in T to destination node
-    for (size_t i = 0; i < T->num_records; i++) {
-        // check if key is duplicate
+    for (size_t i = start; i < end; i++) {
         //printf("Scan - Node %d traverse data block key = %u, payload = %u, tag = %d\n", local_host, T->records[i].k, T->records[i].p, tag);
         //fflush(stdout);
+        // check if key is duplicate
         if (h_table->find(T->records[i].k, &r, h_table->getSize() + 1, 10) == h_table->getSize()) {
             dest = h_table->hash32(T->records[i].k) % hosts;
             //printf("Scan - Node %d, dest = %d, i = %d\n", local_host, dest, i);
@@ -75,27 +102,11 @@ static void *scan_and_send(void *param) {
 
     // Send last partially filled data blocks and end flags to all nodes
     for (dest = 0; dest < hosts; dest++) {
-        if (dbs[dest].size == 0) {
-            // Send last data blocks
-            CL->send_end(dbs[dest], dest, tag);
-            //printf("Scan3 - Node %d send end flag node %d with size %lu, tag = %d\n", local_host, dest, dbs[dest].size, tag);
-            //fflush(stdout);
-        } else {
+        if (dbs[dest].size > 0) {
             assert(dbs[dest].size <= BLOCK_SIZE);
             CL->send_end(dbs[dest], dest, tag);
-            //printf("Scan2 - Node %d send data block to node %d with %lu records, tag = %d\n", local_host, dest, dbs[dest].size / sizeof(join_key_t), tag);
-            //fflush(stdout);
-            // Send end flags
-            while (!CL->send_begin(&dbs[dest], dest, tag));
-            dbs[dest].size = 0;
-            CL->send_end(dbs[dest], dest, tag);
-            //printf("Scan3 - Node %d send end flag node %d with size %lu, tag = %d\n", local_host, dest, dbs[dest].size, tag);
-            //fflush(stdout);
         }
     }
-
-    printf("Scan - Node %d scan FINISHED!!\n", local_host);
-    fflush(stdout);
 
     return NULL;
 }
@@ -114,41 +125,40 @@ static void *recv_keys(void *param) {
     record_key *r;
     DataBlock db;
 
-    int t = 0;
     // Receive until termination received from all nodes
-    while (t != hosts) {
-        while (!CL->recv_begin(&db, &src, tag));
-        assert(db.size <= BLOCK_SIZE);
-        if (db.size > 0) {
-            size_t bytes_copied = 0;
-            while (bytes_copied < db.size) {
-                r = new record_key();
-                assert(bytes_copied + sizeof(join_key_t) <= db.size);
-                r->k = *((join_key_t *) db.data + bytes_copied / sizeof(join_key_t));
-                r->src = (uint8_t) src;
-                r->table_type = (tag == 0 ? 'R' : 'S');
-                r->visited = false;
+    while (recv_complete_tj2[tag] < hosts) {
+        int ret;
+        while ((ret = !CL->recv_begin(&db, &src, tag)) == 0 && recv_complete_tj2[tag] < hosts);
+        if (ret != 0) {
+            assert(db.size <= BLOCK_SIZE);
+            if (db.size > 0) {
+                size_t bytes_copied = 0;
+                while (bytes_copied < db.size) {
+                    r = new record_key();
+                    assert(bytes_copied + sizeof(join_key_t) <= db.size);
+                    r->k = *((join_key_t *) db.data + bytes_copied / sizeof(join_key_t));
+                    r->src = (uint8_t) src;
+                    r->table_type = (tag == 0 ? 'R' : 'S');
+                    r->visited = false;
 
-                //printf("recv_keys: Node %d recv_key = %u, src = %u, type = %c\n", local_host, r->k, r->src, r->table_type);
-                //fflush(stdout);
-                int pos;
-                if ((pos = h_table->add(r)) == h_table->getSize()) {
-                    printf("recv_keys: Node %d, hash table full!!!\n", local_host);
-                    fflush(stdout);
+                    //printf("recv_keys: Node %d recv_key = %u, src = %u, type = %c\n", local_host, r->k, r->src, r->table_type);
+                    //fflush(stdout);
+                    int pos;
+                    if ((pos = h_table->add(r)) == h_table->getSize()) {
+                        printf("recv_keys: Node %d, hash table full!!!\n", local_host);
+                        fflush(stdout);
+                    }
+                    //printf("recv_keys: Node %d, res = %lu, table_r_k %u\n", local_host, res, h_table->table[res]->k);
+                    //fflush(stdout);
+
+                    bytes_copied += sizeof(join_key_t);
                 }
-                //printf("recv_keys: Node %d, res = %lu, table_r_k %u\n", local_host, res, h_table->table[res]->k);
-                //fflush(stdout);
-
-                bytes_copied += sizeof(join_key_t);
+            } else {
+                add_rc_tj2(tag);
             }
-        } else {
-            t++;
+            CL->recv_end(db, src, tag);
         }
-        CL->recv_end(db, src, tag);
     }
-
-    printf("Node %d recv_key from tag %d FINISHED \n", local_host, tag);
-    fflush(stdout);
 
     return NULL;
 }
@@ -231,6 +241,7 @@ static void *notify_nodes(void *param) {
     for (dest = 0; dest < hosts; dest++) {
         if (dbs[dest].size == 0) {
             // Send end flags
+            assert(dbs[dest].size <= BLOCK_SIZE);
             CL->send_end(dbs[dest], dest, tag);
         } else {
             // Send last data blocks
@@ -272,70 +283,63 @@ static void *send_tuple(void *param) {
         db_send[dest].size = 0;
     }
 
-    int t = 0;
-    while (t != hosts) {
+    while (recv_complete_tj2[2] < hosts) {
         //receive send_tuple notification from process T in tag 2
-        while (!CL->recv_begin(&db_recv, &src, 2));
-        assert(db_recv.size <= BLOCK_SIZE);
-        if (db_recv.size > 0) {
-            size_t bytes_copied = 0;
-            while (bytes_copied < db_recv.size) {
-                //join_key_t k = *((join_key_t *) db_recv.data);
-                // set destination node node_s
-                //memcpy(&dest, (char *)db_recv.data + sizeof(join_key_t), sizeof(int));
-                m = *((msg_key_int *) db_recv.data + bytes_copied / sizeof(msg_key_int));
-                bytes_copied += sizeof(msg_key_int);
-                join_key_t k = m.k;
-                dest = m.content;
+        int ret = 0;
+        while ((ret = CL->recv_begin(&db_recv, &src, 2)) == 0 && recv_complete_tj2[2] < hosts);
+        if (ret != 0) {
+            assert(db_recv.size <= BLOCK_SIZE);
+            if (db_recv.size > 0) {
+                size_t bytes_copied = 0;
+                while (bytes_copied < db_recv.size) {
+                    m = *((msg_key_int *) db_recv.data + bytes_copied / sizeof(msg_key_int));
+                    bytes_copied += sizeof(msg_key_int);
+                    join_key_t k = m.k;
+                    dest = m.content;
 
-                //printf("Node %d send_tuple: key %u, dest %d\n", local_host, k, dest);
-                //fflush(stdout);
-
-                record_r *r = new record_r();
-                size_t r_index = h_table->getSize();
-                while ((r_index = h_table->find(k, &r, r_index + 1, 10)) != h_table->getSize()) {
-                    //printf("Node %d send_tuple: r_index %lu, key %u, payload %u to Node %d\n", local_host, r_index, r->k, r->p, dest);
+                    //printf("Node %d send_tuple: key %u, dest %d\n", local_host, k, dest);
                     //fflush(stdout);
-                    if (db_send[dest].size + sizeof(record_r) > BLOCK_SIZE) {
-                        CL->send_end(db_send[dest], dest, tag);
-                        while (!CL->send_begin(&db_send[dest], dest, tag));
-                        db_send[dest].size = 0;
+
+                    record_r *r = new record_r();
+                    size_t r_index = h_table->getSize();
+                    while ((r_index = h_table->find(k, &r, r_index + 1, 10)) != h_table->getSize()) {
+                        //printf("Node %d send_tuple: r_index %lu, key %u, payload %u to Node %d\n", local_host, r_index, r->k, r->p, dest);
+                        //fflush(stdout);
+                        if (db_send[dest].size + sizeof(record_r) > BLOCK_SIZE) {
+                            CL->send_end(db_send[dest], dest, tag);
+                            while (!CL->send_begin(&db_send[dest], dest, tag));
+                            db_send[dest].size = 0;
+                        }
+                        *((record_r *) db_send[dest].data + db_send[dest].size / sizeof(record_r)) = *r;
+                        db_send[dest].size += sizeof(record_r);
+                        assert(db_send[dest].size <= BLOCK_SIZE);
                     }
-                    *((record_r *) db_send[dest].data + db_send[dest].size / sizeof(record_r)) = *r;
-                    db_send[dest].size += sizeof(record_r);
-                    assert(db_send[dest].size <= BLOCK_SIZE);
                 }
+            } else {
+                add_rc_tj2(2);
             }
-        } else {
-            t++;
+            CL->recv_end(db_recv, src, 2);
         }
-        //send_tuple notification in tag 2
-        CL->recv_end(db_recv, src, 2);
     }
 
     // Send last partially filled data blocks and end flags to all nodes
     // tag 3
     for (dest = 0; dest < hosts; dest++) {
-        if (db_send[dest].size == 0) {
-            // Send end flags
-            CL->send_end(db_send[dest], dest, tag);
-            printf("send_tuple: Node %d send end flag to dest %d with tag %d\n", local_host, dest, tag);
-            fflush(stdout);
-        } else {
+        if (db_send[dest].size > 0) {
             // Send last data blocks
             assert(db_send[dest].size <= BLOCK_SIZE);
             CL->send_end(db_send[dest], dest, tag);
-            // Send end flags
-            while (!CL->send_begin(&db_send[dest], dest, tag));
-            db_send[dest].size = 0;
-            CL->send_end(db_send[dest], dest, tag);
-            printf("send_tuple: Node %d send end flag to dest %d with tag %d\n", local_host, dest, tag);
-            fflush(stdout);
+//            // Send end flags
+//            while (!CL->send_begin(&db_send[dest], dest, tag));
+//            db_send[dest].size = 0;
+//            CL->send_end(db_send[dest], dest, tag);
+//            printf("send_tuple: Node %d send end flag to dest %d with tag %d\n", local_host, dest, tag);
+//            fflush(stdout);
         }
     }
 
-    printf("Node %d send_tuple FINISHED\n", local_host);
-    fflush(stdout);
+//    printf("Node %d send_tuple FINISHED\n", local_host);
+//    fflush(stdout);
 
     return NULL;
 }
@@ -350,8 +354,8 @@ static void *join_tuple(void *param) {
     int hosts = CL->get_hosts();
     int local_host = CL->get_local_host();
 
-    printf("Node %d, join_tuple begin!!!, tag = %d\n", local_host, tag);
-    fflush(stdout);
+//    printf("Node %d, join_tuple begin!!!, tag = %d\n", local_host, tag);
+//    fflush(stdout);
 
     int src;
     DataBlock db_recv;
@@ -359,43 +363,40 @@ static void *join_tuple(void *param) {
     record_r *r;
     record_s *s = NULL;
 
-    int t = 0;
-    while (t != hosts) {
-        while (!CL->recv_begin(&db_recv, &src, tag)) {
+    while (recv_complete_tj2[3] < hosts) {
+        int ret;
+        while ((ret = CL->recv_begin(&db_recv, &src, tag)) == 0 && recv_complete_tj2[3] < hosts) {
 			//printf("Node %d I am here!!, tag %d, t = %d\n", local_host, tag, t);
 		}
-        assert(db_recv.size <= BLOCK_SIZE);
+        if (ret != 0) {
+            assert(db_recv.size <= BLOCK_SIZE);
+            if (db_recv.size > 0) {
+                size_t bytes_copied = 0;
+                while (bytes_copied < db_recv.size) {
+                    r = new record_r();
+                    assert(bytes_copied + sizeof(record_r) <= db_recv.size);
+                    *r = *((record_r *) db_recv.data + bytes_copied / sizeof(record_r));
+                    size_t pos = h_table->getSize();
 
-		//printf("Node %d, here 1\n", local_host);	
-
-        if (db_recv.size > 0) {
-            size_t bytes_copied = 0;
-            while (bytes_copied < db_recv.size) {
-                r = new record_r();
-                assert(bytes_copied + sizeof(record_r) <= db_recv.size);
-                *r = *((record_r *) db_recv.data + bytes_copied / sizeof(record_r));
-                size_t pos = h_table->getSize();
-				
-				//printf("Node %d, here 2\n", local_host);
-                while ((pos = h_table->find(r->k, &s, pos + 1, 10)) != h_table->getSize()) {
-                    bool valid = true;
-                    //printf("Join Result: Node %d #%lu, src %d, join_key %u payload_r %u, payload_s %u %s\n", local_host, src, 
-                    //		trackjoin2_num, s->k, r->p, s->p, valid ? "correct" : "incorrect");
-                    //fflush(stdout);
-                    trackjoin2_num++;
+                    //printf("Node %d, here 2\n", local_host);
+                    while ((pos = h_table->find(r->k, &s, pos + 1, 10)) != h_table->getSize()) {
+                        bool valid = true;
+                        //printf("Join Result: Node %d #%lu, src %d, join_key %u payload_r %u, payload_s %u %s\n", local_host, src,
+                        //		trackjoin2_num, s->k, r->p, s->p, valid ? "correct" : "incorrect");
+                        //fflush(stdout);
+                        trackjoin2_num++;
+                    }
+                    bytes_copied += sizeof(record_r);
                 }
-                bytes_copied += sizeof(record_r);
+            } else {
+                add_rc_tj2(3);
             }
-        } else {
-            t++;
-            printf("join tuple : Node %d recv end flag from Node %d with tag %d\n", local_host, src, tag);
-            fflush(stdout);
+            CL->recv_end(db_recv, src, tag);
         }
-        CL->recv_end(db_recv, src, tag);
     }
 
-    printf("Node %d join_tuple FINISHED\n", local_host);
-    fflush(stdout);
+//    printf("Node %d join_tuple FINISHED\n", local_host);
+//    fflush(stdout);
 
     return NULL;
 }
@@ -423,33 +424,87 @@ int TrackJoin2::run(ConnectionLayer *CL, struct table_r *R, struct table_s *S) {
 
     times = time(NULL);
 
+    size_t r_interval = R->num_records / R_SCAN_THREADS;
     // start R table scan_and_send
-    worker_param<table_r, record_r> *param_r = new worker_param<table_r, record_r>();
-    param_r->CL = CL;
-    param_r->t = R;
-    param_r->tag = 0;
-    param_r->h = h_table_r;
-    pthread_create(&worker_threads[0], NULL, &scan_and_send<table_r, record_r>, (void *) param_r);
+    for (t = 0; t < R_SCAN_THREADS; t++) {
+        worker_param<table_r, record_r> *param_r = new worker_param<table_r, record_r>();
+        param_r->CL = CL;
+        param_r->t = R;
+        param_r->tag = 0;
+        param_r->h = h_table_r;
+        param_r->start_index = r_interval * t;
+        param_r->end_index = r_interval * (t + 1);
+        pthread_create(&worker_threads[t], NULL, &scan_and_send<table_r, record_r>, (void *) param_r);
+    }
 
+    size_t s_interval = S->num_records / S_SCAN_THREADS;
     // start S table scan_and_send
-    worker_param<table_s, record_s> *param_s = new worker_param<table_s, record_s>();
-    param_s->CL = CL;
-    param_s->t = S;
-    param_s->tag = 1;
-    param_s->h = h_table_s;
-    pthread_create(&worker_threads[1], NULL, &scan_and_send<table_s, record_s>, (void *) param_s);
+    for (; t < R_SCAN_THREADS + S_SCAN_THREADS; t++) {
+        worker_param<table_s, record_s> *param_s = new worker_param<table_s, record_s>();
+        param_s->CL = CL;
+        param_s->t = S;
+        param_s->tag = 1;
+        param_s->h = h_table_s;
+        param_s->start_index = s_interval * t;
+        param_s->end_index = s_interval * (t + 1);
+        pthread_create(&worker_threads[t], NULL, &scan_and_send<table_s, record_s>, (void *) param_s);
+    }
 
-    // start 2 process T recv_keys to receive keys sent from R and S respectively
-    for (t = 0; t < 2; t++) {
+    for (int i = 0; i < 4; i++) {
+        pthread_mutex_init(&rc_mutex_tj2[i], NULL);
+        recv_complete_tj2[i] = 0;
+    }
+
+    // start process receiving keys sent from R
+    for (; t < R_SCAN_THREADS + S_SCAN_THREADS + RECV_R_THREADS; t++) {
         worker_param<table_r, record_key> *param_t = new worker_param<table_r, record_key>();
         param_t->CL = CL;
-        param_t->tag = t;
+        param_t->tag = 0;
         param_t->h = h_table_key;
-        pthread_create(&worker_threads[t + 2], NULL, &recv_keys, (void *) param_t);
+        pthread_create(&worker_threads[t], NULL, &recv_keys, (void *) param_t);
+    }
+
+    // start process receiving keys sent from S
+    for (; t < CPU_CORES; t++) {
+        worker_param<table_r, record_key> *param_t = new worker_param<table_r, record_key>();
+        param_t->CL = CL;
+        param_t->tag = 1;
+        param_t->h = h_table_key;
+        pthread_create(&worker_threads[t], NULL, &recv_keys, (void *) param_t);
+    }
+
+    // barrier for R scan_and_send
+    for (t = 0; t < R_SCAN_THREADS; t++) {
+        void *retval;
+        pthread_join(worker_threads[t], &retval);
+    }
+
+    int hosts = CL->get_hosts();
+    DataBlock *dbs = new DataBlock[hosts];
+    for (int dest = 0; dest < hosts; dest++) {
+        while (!CL->send_begin(&dbs[dest], dest, 0));
+        dbs[dest].size = 0;
+        CL->send_end(dbs[dest], dest, 0);
+        printf("Scan3 - Node %d send end flag node %d with tag 0\n", local_host, dest);
+        fflush(stdout);
+    }
+
+    // barrier for S scan_and_send
+    for (; t < R_SCAN_THREADS + S_SCAN_THREADS; t++) {
+        void *retval;
+        pthread_join(worker_threads[t], &retval);
+    }
+
+    for (int dest = 0; dest < hosts; dest++) {
+        while (!CL->send_begin(&dbs[dest], dest, 1));
+        dbs[dest].size = 0;
+        CL->send_end(dbs[dest], dest, 1);
+        printf("Scan3 - Node %d send end flag node %d with tag 1\n", local_host, dest);
+        fflush(stdout);
     }
 
     // barrier
-    for (t = 0; t < 4; t++) {
+    for (; t < CPU_CORES; t++) {
         void *retval;
         pthread_join(worker_threads[t], &retval);
     }
@@ -458,30 +513,60 @@ int TrackJoin2::run(ConnectionLayer *CL, struct table_r *R, struct table_s *S) {
     fflush(stdout);
     //h_table_key->printAll(local_host);
 
-    // notify R processes
-    worker_param<table_r, record_key> *param_t = new worker_param<table_r, record_key>();
-    param_t->CL = CL;
-    param_t->tag = 2;
-    param_t->h = h_table_key;
-    pthread_create(&worker_threads[0], NULL, &notify_nodes, (void *) param_t);
+//    for (int i = 0; i < 2; i++) {
+//        nodes_recv_complete[i] = 0;
+//    }
+
+    for (t = 0; t < T_NOTI_THREADS; t++) {
+        // notify R processes
+        worker_param<table_r, record_key> *param_t = new worker_param<table_r, record_key>();
+        param_t->CL = CL;
+        param_t->tag = 2;
+        param_t->h = h_table_key;
+        pthread_create(&worker_threads[t], NULL, &notify_nodes, (void *) param_t);
+    }
 
     // R receives notification and send its tuples to S
     // listening on tag 2 while sending with tag 3
-    param_r = new worker_param<table_r, record_r>();
-    param_r->CL = CL;
-    param_r->tag = 3;
-    param_r->h = h_table_r;
-    pthread_create(&worker_threads[1], NULL, &send_tuple, (void *) param_r);
+    for (; t < T_NOTI_THREADS + R_SEND_THREADS; t++) {
+        worker_param<table_r, record_r> *param_r = new worker_param<table_r, record_r>();
+        param_r->CL = CL;
+        param_r->tag = 3;
+        param_r->h = h_table_r;
+        pthread_create(&worker_threads[t], NULL, &send_tuple, (void *) param_r);
+    }
 
     // S receives key sent from R and join the tuples
-    param_s = new worker_param<table_s, record_s>();
-    param_s->CL = CL;
-    param_s->tag = 3;
-    param_s->h = h_table_s;
-    pthread_create(&worker_threads[2], NULL, &join_tuple, (void *) param_s);
+    for (; t < CPU_CORES; t++) {
+        worker_param<table_s, record_s> *param_s = new worker_param<table_s, record_s>();
+        param_s->CL = CL;
+        param_s->tag = 3;
+        param_s->h = h_table_s;
+        pthread_create(&worker_threads[t], NULL, &join_tuple, (void *) param_s);
+    }
 
     // barrier
-    for (t = 0; t < 3; t++) {
+    for (t = 0; t < T_NOTI_THREADS; t++){
+        void *retval;
+        pthread_join(worker_threads[t], &retval);
+    }
+
+    // barrier
+    for (; t < T_NOTI_THREADS + R_SEND_THREADS; t++) {
+        void *retval;
+        pthread_join(worker_threads[t], &retval);
+    }
+
+    for (int dest = 0; dest < hosts; dest++) {
+        while (!CL->send_begin(&dbs[dest], dest, 2));
+        dbs[dest].size = 0;
+        CL->send_end(dbs[dest], dest, 2);
+        printf("send_tuple: Node %d send end flag to dest %d with tag 2\n", local_host, dest);
+        fflush(stdout);
+    }
+
+    // barrier for join_tuple threads
+    for (; t < CPU_CORES; t++) {
         void *retval;
         pthread_join(worker_threads[t], &retval);
     }
