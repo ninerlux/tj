@@ -19,9 +19,9 @@ public:
     size_t del(size_t index);
     size_t update(Record *r, size_t index);
     size_t find(join_key_t k, Record **r, size_t index, size_t nr_results);    //index: starting searching index
-    size_t markVisited(join_key_t k, size_t index, char table_type, Record **r, bool visited);
-
     size_t getNextKey(size_t index, join_key_t &k, bool visited);
+    size_t markNextKey(size_t index, Record **r, char table_type, bool visited);
+    size_t markVisited(join_key_t k, size_t index, char table_type, Record **r, bool visited);
 
     size_t getSize() {
         return size;
@@ -148,6 +148,20 @@ size_t HashTable<Record>::getNextKey(size_t index, join_key_t &k, bool visited) 
 	}
 
 	return size;
+}
+
+template<typename Record>
+size_t HashTable<Record>::markNextKey(size_t index, Record **r, char table_type, bool visited) {
+    for (size_t i = index; i < size; i++) {
+        if (table[i] != NULL
+                && (table_type == 'N' || table[i]->table_type == table_type)
+                && table[i]->visited != visited) {
+            *r = table[i];
+            table[i]->visited = visited;
+            return i;
+        }
+    }
+    return size;
 }
 
 // used only for record_key type

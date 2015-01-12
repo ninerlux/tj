@@ -13,9 +13,9 @@
 #define S_SCAN_THREADS 4
 #define RECV_R_THREADS 4
 #define RECV_S_THREADS 4
-#define T_NOTI_THREADS 1
-#define R_SEND_THREADS 7
-#define S_COMT_THREADS 8
+#define T_NOTI_THREADS 6
+#define R_SEND_THREADS 5
+#define S_COMT_THREADS 5
 
 int *recv_complete_tj2 = new int[4];
 pthread_mutex_t *rc_mutex_tj2 = new pthread_mutex_t[4];
@@ -100,7 +100,7 @@ static void *scan_and_send(void *param) {
         }
     }
 
-    // Send last partially filled data blocks and end flags to all nodes
+    // Send last partially filled data blocks to to all nodes
     for (dest = 0; dest < hosts; dest++) {
         if (dbs[dest].size > 0) {
             assert(dbs[dest].size <= BLOCK_SIZE);
@@ -191,72 +191,41 @@ static void *notify_nodes(void *param) {
     //size_t k_index = -1;
 	size_t r_index = -1;
     join_key_t k;
+    record_key *rec = NULL;
     msg_key_int m;
 
-    // for all distinct key k in hash table
-    while ((r_index = h_table->mark(k_index + 1, k, true)) != table_size) {
+    // for all <k, node_r> in hash table
+    while ((r_index = h_table->markNextKey(r_index + 1, &rec, 'R', true)) != table_size) {
         //printf("notify_nodes: Node %d, key %u\n", local_host, k);
-
-        bool *nodes = new bool[hosts];
-        for (int i = 0; i < hosts; i++) {
-            nodes[i] = false;
-        }
-
+        int node_r = rec->src;
+        k = rec->k;
+        size_t s_index = r_index;
         // find all <k, node_s> in table
-        size_t s_index = k_index - 1;
-        record_key *r = NULL;
-        int node_s = -1;
-        while ((s_index = h_table->markVisited(k, s_index + 1, 'S', &r, true)) != table_size) {
-            node_s = r->src;
-            assert(node_s >= 0);
-            nodes[node_s] = true;
-        }
-
-        size_t r_index = k_index - 1;
-        // for all <k, node_r> in table
-        while ((r_index = h_table->markVisited(k, r_index + 1, 'R', &r, true)) != table_size) {
-            //printf("notify_nodes: Node %d, r_index = %lu, node_r = %d\n", local_host, r_index, node_r);
-            //fflush(stdout);
-            // for all <k, node_s> in table
-            int node_r = r->src;
-            for (node_s = 0; node_s < hosts; node_s++) {
-                if (nodes[node_s]) {
-                    //printf("notify_nodes: Node %d, s_index = %lu, node_s = %d\n", local_host, s_index, node_s);
-                    //fflush(stdout);
-                    // send <k, node_s> to node_r, use tag 2
-                    m.k = k;
-                    m.content = node_s;
-                    if (dbs[node_r].size + sizeof(msg_key_int) > BLOCK_SIZE) {
-                        CL->send_end(dbs[node_r], node_r, tag);
-                        while (!CL->send_begin(&dbs[node_r], node_r, tag));
-                        dbs[node_r].size = 0;
-                    }
-                    printf("notify_nodes: Node %d, send <key %u, node_s %d> to node_r %d\n", local_host, k, node_s, node_r);
-                    fflush(stdout);
-                    *((msg_key_int *) dbs[node_r].data + dbs[node_r].size / sizeof(msg_key_int)) = m;
-                    dbs[node_r].size += sizeof(msg_key_int);
-                    assert(dbs[node_r].size <= BLOCK_SIZE);
-                }
+        // Do not mark keys sent from S as visited. So we pass "false" to its parameter
+        while ((s_index = h_table->markVisited(k, s_index + 1, 'S', &rec, false)) != table_size) {
+            int node_s = rec->src;
+            // send <k, node_s> to node_r, use tag 2
+            m.k = k;
+            m.content = node_s;
+            if (dbs[node_r].size + sizeof(msg_key_int) > BLOCK_SIZE) {
+                CL->send_end(dbs[node_r], node_r, tag);
+                while (!CL->send_begin(&dbs[node_r], node_r, tag));
+                dbs[node_r].size = 0;
             }
+            printf("notify_nodes: Node %d, send <key %u, node_s %d> to node_r %d\n", local_host, k, node_s, node_r);
+            fflush(stdout);
+            *((msg_key_int *) dbs[node_r].data + dbs[node_r].size / sizeof(msg_key_int)) = m;
+            dbs[node_r].size += sizeof(msg_key_int);
+            assert(dbs[node_r].size <= BLOCK_SIZE);
         }
     }
 
-    // Send last partially filled data blocks and end flags to all nodes
+    // Send last partially filled data blocks to all nodes
     for (dest = 0; dest < hosts; dest++) {
-        if (dbs[dest].size == 0) {
-            // Send end flags
-            assert(dbs[dest].size <= BLOCK_SIZE);
-            CL->send_end(dbs[dest], dest, tag);
-        } else {
+        if (dbs[dest].size > 0) {
             // Send last data blocks
             assert(dbs[dest].size <= BLOCK_SIZE);
             CL->send_end(dbs[dest], dest, tag);
-            // Send end flags
-            while (!CL->send_begin(&dbs[dest], dest, tag));
-            dbs[dest].size = 0;
-            CL->send_end(dbs[dest], dest, tag);
-            printf("notify_nodes: Node %d send end flag to node %d with tag %d\n", local_host, dest, tag);
-            fflush(stdout);
         }
     }
 
@@ -333,12 +302,6 @@ static void *send_tuple(void *param) {
             // Send last data blocks
             assert(db_send[dest].size <= BLOCK_SIZE);
             CL->send_end(db_send[dest], dest, tag);
-//            // Send end flags
-//            while (!CL->send_begin(&db_send[dest], dest, tag));
-//            db_send[dest].size = 0;
-//            CL->send_end(db_send[dest], dest, tag);
-//            printf("send_tuple: Node %d send end flag to dest %d with tag %d\n", local_host, dest, tag);
-//            fflush(stdout);
         }
     }
 
@@ -385,8 +348,8 @@ static void *join_tuple(void *param) {
                     //printf("Node %d, here 2\n", local_host);
                     while ((pos = h_table->find(r->k, &s, pos + 1, 10)) != h_table->getSize()) {
                         bool valid = true;
-                        printf("Join Result: Node %d #%lu, src %d, join_key %u payload_r %u, payload_s %u %s\n", local_host, src,
-                        		trackjoin2_num, s->k, r->p, s->p, valid ? "correct" : "incorrect");
+                        printf("Join Result: Node %d #%lu, src %d, join_key %u payload_r %u, payload_s %u %s\n", local_host,
+                        		trackjoin2_num, src, s->k, r->p, s->p, valid ? "correct" : "incorrect");
                         fflush(stdout);
                         trackjoin2_num++;
                     }
@@ -553,6 +516,14 @@ int TrackJoin2::run(ConnectionLayer *CL, struct table_r *R, struct table_s *S) {
     for (t = 0; t < T_NOTI_THREADS; t++){
         void *retval;
         pthread_join(worker_threads[t], &retval);
+    }
+
+    for (int dest = 0; dest < hosts; dest++) {
+        while (!CL->send_begin(&dbs[dest], dest, 2));
+        dbs[dest].size = 0;
+        CL->send_end(dbs[dest], dest, 2);
+        printf("notify_nodes: Node %d send end flag to node %d with tag 2\n", local_host, dest);
+        fflush(stdout);
     }
 
     // barrier
