@@ -10,7 +10,7 @@ class HashTable {
 public:
     HashTable(size_t s) : size(s) {
         table = new Record *[size];
-        hash32_factor = 79;
+        hash32_factor = 982451653;
     };
 
     size_t hash32(join_key_t k);

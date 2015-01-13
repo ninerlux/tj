@@ -205,8 +205,7 @@ static void *receive_and_probe(void *param) {
                         //}
                         //assert(valid == true);
                         //Output joined tuples
-                        //printf("Join Result: Node %d #%d, join_key_r %u join_key_s %u payload_r %u, payload_s %u %s\n", local_host, ++hashjoin_num,
-                        //        r->k, s->k, r->p, s->p, valid ? "correct" : "incorrect");
+                        //printf("Join Result: Node %d #%d, src %d, join_key_r %u join_key_s %u payload_r %u, payload_s %u %s\n", local_host, ++hashjoin_num, src, r->k, s->k, r->p, s->p, valid ? "correct" : "incorrect");
                         //fflush(stdout);
                         hashjoin_num++;
                     }

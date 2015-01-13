@@ -62,7 +62,7 @@ void create_table(table_r &R, long r_bytes, table_s &S, long s_bytes) {
     for (i = 0; i < R.num_records; i++) {
         join_key_t rand;
         while ((rand = (uint32_t) random()) == 0);
-        R.records[i].k = rand % 10;
+        R.records[i].k = rand % 10000000; 
         for (int b = 0; b < BYTES_PAYLOAD_R; b++) {
             R.records[i].p.bytes[b] = ((uint8_t) R.records[i].k) + 1;
         }
@@ -82,7 +82,7 @@ void create_table(table_r &R, long r_bytes, table_s &S, long s_bytes) {
     for (j = 0; j < S.num_records; j++) {
         join_key_t rand;
         while ((rand = (uint32_t) random()) == 0);
-        S.records[j].k = rand % 10;
+        S.records[j].k = rand % 10000000;
         for (int b = 0; b < BYTES_PAYLOAD_S; b++) {
             S.records[j].p.bytes[b] = ((uint8_t) S.records[j].k) + 1;
         }
@@ -107,7 +107,7 @@ int main(int argc, char **argv) {
 
     struct table_r R;
     struct table_s S;
-    create_table(R, atol(argv[2]) * 32, S, atol(argv[2]) * 32 * atol(argv[3]));
+    create_table(R, atol(argv[2]) * 1024 * 1024, S, atol(argv[2]) * 1024 * 1024 * atol(argv[3]));
 
     if (strcmp(code, "test") == 0) {
         algo = new ProducerConsumer();
