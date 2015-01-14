@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
+#include <unistd.h>
 
 size_t trackjoin4_num = 0;
 
@@ -20,7 +21,7 @@ public:
 };
 
 int TrackJoin4::get_tags() {
-    return 5;
+    return 7;
 }
 
 template<typename Table, typename Record>
@@ -32,7 +33,7 @@ static void *scan_and_send(void *param) {
     HashTable<Record> *h_table = p->h;
 
     int hosts = CL->get_hosts();
-    //int local_host = CL->get_local_host();
+    int local_host = CL->get_local_host();
 
     DataBlock *dbs = new DataBlock[hosts];
     // prepare data blocks for each destination
@@ -44,6 +45,8 @@ static void *scan_and_send(void *param) {
 
     // Add all <k, payload> to hash table
     for (size_t i = 0; i < T->num_records; i++) {
+        printf("Scan - Node %d traverse data #%lu key = %u\n", local_host, i, T->records[i].k);
+        fflush(stdout);
         h_table->add(&(T->records[i]));
     }
 
@@ -64,6 +67,8 @@ static void *scan_and_send(void *param) {
         // send <k, c> to dest
         m.k = k;
         m.content = c;
+        printf("Scan - Node %d send data key = %u, count = %d, tag = %d\n", local_host, k, c, tag);
+        fflush(stdout);
         if (dbs[dest].size + sizeof(msg_key_int) > BLOCK_SIZE) {
             CL->send_end(dbs[dest], dest, tag);
             while (!CL->send_begin(&dbs[dest], dest, tag));
@@ -76,15 +81,17 @@ static void *scan_and_send(void *param) {
 
     // Send last partially filled data blocks and end flags to all nodes
     for (dest = 0; dest < hosts; dest++) {
-        // Send last data blocks
-        if (dbs[dest].size > 0) {
+        if (dbs[dest].size == 0) {
+            CL->send_end(dbs[dest], dest, tag);
+        } else {
+            // Send last data blocks
             assert(dbs[dest].size <= BLOCK_SIZE);
             CL->send_end(dbs[dest], dest, tag);
+            // Send end flags
+            while (!CL->send_begin(&dbs[dest], dest, tag));
+            dbs[dest].size = 0;
+            CL->send_end(dbs[dest], dest, tag);
         }
-        // Send end flags
-        while (!CL->send_begin(&dbs[dest], dest, tag));
-        dbs[dest].size = 0;
-        CL->send_end(dbs[dest], dest, tag);
     }
 
     return NULL;
@@ -301,26 +308,30 @@ static void *notify_migration(void *param) {
 
     // Send last partially filled data blocks and end flags to all nodes
     for (int dest = 0; dest < hosts; dest++) {
-        // Send last data blocks
-        if (dbs[dest].size > 0) {
+        if (dbs[dest].size == 0) {
+            CL->send_end(dbs[dest], dest, tag);
+        } else {
+            // Send last data blocks
             assert(dbs[dest].size <= BLOCK_SIZE);
             CL->send_end(dbs[dest], dest, tag);
+            // Send end flags
+            while (!CL->send_begin(&dbs[dest], dest, tag));
+            dbs[dest].size = 0;
+            CL->send_end(dbs[dest], dest, tag);
         }
-        // Send end flags
-        while (!CL->send_begin(&dbs[dest], dest, tag));
-        dbs[dest].size = 0;
-        CL->send_end(dbs[dest], dest, tag);
     }
 
     return NULL;
 }
 
 // R or S
+// recv notification : tag 2
+// migrate tuples: tag 3
 template<typename Table, typename Record>
 static void *migrate_send(void *param) {
     worker_param<Table, Record> *p = (worker_param<Table, Record> *) param;
     ConnectionLayer *CL = p->CL;
-    int tag = p->tag;
+    int tag = p->tag; // 3
     HashTable<Record> *h_table = p->h;
 
     int hosts = CL->get_hosts();
@@ -342,7 +353,7 @@ static void *migrate_send(void *param) {
     int t = 0;
     while (t != hosts) {
         //receive notification from process T
-        while (!CL->recv_begin(&db_recv, &src, tag));
+        while (!CL->recv_begin(&db_recv, &src, 2));
         assert(db_recv.size <= BLOCK_SIZE);
         if (db_recv.size > 0) {
             size_t bytes_copied = 0;
@@ -367,20 +378,22 @@ static void *migrate_send(void *param) {
         } else {
             t++;
         }
-        CL->recv_end(db_recv, src, tag);
+        CL->recv_end(db_recv, src, 2);
     }
 
     // Send last partially filled data blocks and end flags to all nodes
     for (dest = 0; dest < hosts; dest++) {
-        // Send last data blocks
-        if (db_send[dest].size > 0) {
+        if (db_send[dest].size == 0) {
+            CL->send_end(db_send[dest], dest, tag);
+        } else {
+            // Send last data blocks
             assert(db_send[dest].size <= BLOCK_SIZE);
             CL->send_end(db_send[dest], dest, tag);
+            // Send end flags
+            while (!CL->send_begin(&db_send[dest], dest, tag));
+            db_send[dest].size = 0;
+            CL->send_end(db_send[dest], dest, tag);
         }
-        // Send end flags
-        while (!CL->send_begin(&db_send[dest], dest, tag));
-        db_send[dest].size = 0;
-        CL->send_end(db_send[dest], dest, tag);
     }
 
     return NULL;
@@ -670,7 +683,7 @@ static void *join_tuple(void *param) {
 
 int TrackJoin4::run(ConnectionLayer *CL, struct table_r *R, struct table_s *S) {
     int t;
-    worker_threads = new pthread_t[32];
+    worker_threads = new pthread_t[16];
     int local_host = CL->get_local_host();
 
     size_t h_table_r_size = R->num_records / 0.5;
@@ -680,9 +693,88 @@ int TrackJoin4::run(ConnectionLayer *CL, struct table_r *R, struct table_s *S) {
     printf("Node %d, R hash table size = %lu, S hash table size = %lu\n", local_host, h_table_r_size, h_table_s_size);
     fflush(stdout);
 
-    HashTable<record_r> *h_table_r = new HashTable<record_r>(h_table_r_size);
-    HashTable<record_s> *h_table_s = new HashTable<record_s>(h_table_s_size);
-    HashTable<record_key_count> *h_table_key = new HashTable<record_key_count>(h_table_key_size);
+//    HashTable<record_r> *h_table_r = new HashTable<record_r>(h_table_r_size);
+//    HashTable<record_s> *h_table_s = new HashTable<record_s>(h_table_s_size);
+//    HashTable<record_key_count> *h_table_key = new HashTable<record_key_count>(h_table_key_size);
+//
+//    worker_param<table_r, record_r> *param_r = new worker_param<table_r, record_r>();
+//    param_r->CL = CL;
+//    param_r->t = R;
+//    param_r->tag = 0;
+//    param_r->h = h_table_r;
+//    pthread_create(&worker_threads[0], NULL, &scan_and_send<table_r, record_r>, (void *) param_r);
+//
+//    worker_param<table_s, record_s> *param_s = new worker_param<table_s, record_s>();
+//    param_s->CL = CL;
+//    param_s->t = S;
+//    param_s->tag = 1;
+//    param_s->h = h_table_s;
+//    pthread_create(&worker_threads[1], NULL, &scan_and_send<table_s, record_s>, (void *) param_s);
+//
+//    // start 2 process T recv_key_count to receive keys sent from R and S respectively
+//    for (t = 0; t < 2; t++) {
+//        worker_param<table_r, record_key_count> *param_t = new worker_param<table_r, record_key_count>();
+//        param_t->CL = CL;
+//        param_t->tag = t;
+//        param_t->h = h_table_key;
+//        pthread_create(&worker_threads[t + 2], NULL, &recv_key_count, (void *) param_t);
+//    }
+//
+//    // barrier
+//    for (t = 0; t < 4; t++) {
+//        void *retval;
+//        pthread_join(worker_threads[t], &retval);
+//    }
+//
+//    // notify migration
+//    worker_param<table_r, record_key_count> *param_n = new worker_param<table_r, record_key_count>();
+//    param_n->CL = CL;
+//    param_n->tag = 2;
+//    param_n->h = h_table_key;
+//    pthread_create(&worker_threads[0], NULL, &notify_migration, (void *) param_n);
 
+    // R, migrate send
+//    param_r = new worker_param<table_r, record_r>();
+//    param_r->CL = CL;
+//    param_r->t = R;
+//    param_r->tag = 3;
+//    param_r->h = h_table_r;
+//    pthread_create(&worker_threads[1], NULL, &migrate_send, (void *) param_r);
+//
+//    // S, migrate send
+//    param_s = new worker_param<table_s, record_s>();
+//    param_s->CL = CL;
+//    param_s->t = S;
+//    param_s->tag = 3;
+//    pthread_create(&worker_threads[2], NULL, &migrate_send, (void *) param_s);
+//
+//    // R, migrate recv
+//    param_r = new worker_param<table_r, record_r>();
+//    param_r->CL = CL;
+//    param_r->t = R;
+//    param_r->tag = 3;
+//    param_r->h = h_table_r;
+//    pthread_create(&worker_threads[3], NULL, &migrate_recv, (void *) param_r);
+//
+//    // S, migrate recv
+//    param_s = new worker_param<table_s, record_s>();
+//    param_s->CL = CL;
+//    param_s->tag = 3;
+//    param_s->h = h_table_s;
+//    pthread_create(&worker_threads[4], NULL, &migrate_recv, (void *) param_s);
+//
+//    for (t = 0; t < 5; t++) {
+//        void *retval;
+//        pthread_join(worker_threads[t], &retval);
+//    }
+//
+//    // notify broadcast
+//    worker_param<table_r, record_key_count> *param_b = new worker_param<table_r, record_key_count>();
+//    param_b->CL = CL;
+//    param_b->tag = 4;
+//    param_b->h = h_table_key;
+//    pthread_create(&worker_threads[5], NULL, &notify_broadcast, (void *) param_b);
 
+    // R send tuple
+    //worker_param<table_r,
 }

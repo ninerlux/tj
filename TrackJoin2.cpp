@@ -205,38 +205,93 @@ static void *notify_nodes(void *param) {
         dbs[dest].size = 0;
     }
 
+//    size_t table_size = h_table->getSize();
+//    //size_t k_index = -1;
+//	size_t r_index = -1;
+//    join_key_t k;
+//    record_key *rec = NULL;
+//    msg_key_int m;
+//
+//    // for all <k, node_r> in hash table
+//    while ((r_index = h_table->markNextKey(r_index + 1, &rec, 'R', true)) != table_size) {
+//        //printf("notify_nodes: Node %d, key_r %u\n", local_host, rec->k);
+//        int node_r = rec->src;
+//        k = rec->k;
+//        size_t s_index = -1;
+//        // find all <k, node_s> in table
+//        // Do not mark keys sent from S as visited. So we pass "false" to its parameter
+//        while ((s_index = h_table->markVisited(k, s_index + 1, 'S', &rec, false)) != table_size) {
+//            int node_s = rec->src;
+//            // send <k, node_s> to node_r, use tag 2
+//            m.k = k;
+//            m.content = node_s;
+//            if (dbs[node_r].size + sizeof(msg_key_int) > BLOCK_SIZE) {
+//                CL->send_end(dbs[node_r], node_r, tag);
+//                while (!CL->send_begin(&dbs[node_r], node_r, tag));
+//                dbs[node_r].size = 0;
+//            }
+//            //printf("notify_nodes: Node %d, send <key %u, node_s %d> to node_r %d\n", local_host, k, node_s, node_r);
+//            //fflush(stdout);
+//            *((msg_key_int *) dbs[node_r].data + dbs[node_r].size / sizeof(msg_key_int)) = m;
+//            dbs[node_r].size += sizeof(msg_key_int);
+//            assert(dbs[node_r].size <= BLOCK_SIZE);
+//        }
+//    }
+
     size_t table_size = h_table->getSize();
-    //size_t k_index = -1;
-	size_t r_index = -1;
+    size_t k_index = -1;
     join_key_t k;
-    record_key *rec = NULL;
     msg_key_int m;
 
-    // for all <k, node_r> in hash table
-    while ((r_index = h_table->markNextKey(r_index + 1, &rec, 'R', true)) != table_size) {
-        //printf("notify_nodes: Node %d, key_r %u\n", local_host, rec->k);
-        int node_r = rec->src;
-        k = rec->k;
-        size_t s_index = -1;
+    // for all distinct key k in hash table
+    while ((k_index = h_table->getNextKey(k_index + 1, k, true)) != table_size) {
+        //printf("notify_nodes: Node %d, key %u\n", local_host, k);
+
+        bool *nodes = new bool[hosts];
+        for (int i = 0; i < hosts; i++) {
+            nodes[i] = false;
+        }
+
         // find all <k, node_s> in table
-        // Do not mark keys sent from S as visited. So we pass "false" to its parameter
-        while ((s_index = h_table->markVisited(k, s_index + 1, 'S', &rec, false)) != table_size) {
-            int node_s = rec->src;
-            // send <k, node_s> to node_r, use tag 2
-            m.k = k;
-            m.content = node_s;
-            if (dbs[node_r].size + sizeof(msg_key_int) > BLOCK_SIZE) {
-                CL->send_end(dbs[node_r], node_r, tag);
-                while (!CL->send_begin(&dbs[node_r], node_r, tag));
-                dbs[node_r].size = 0;
-            }
-            //printf("notify_nodes: Node %d, send <key %u, node_s %d> to node_r %d\n", local_host, k, node_s, node_r);
+        size_t s_index = k_index - 1;
+        record_key *r = NULL;
+        int node_s = -1;
+        while ((s_index = h_table->markVisited(k, s_index + 1, 'S', &r, true)) != table_size) {
+            node_s = r->src;
+            assert(node_s >= 0);
+            nodes[node_s] = true;
+        }
+
+        size_t r_index = k_index - 1;
+        // for all <k, node_r> in table
+        while ((r_index = h_table->markVisited(k, r_index + 1, 'R', &r, true)) != table_size) {
+            //printf("notify_nodes: Node %d, r_index = %lu, node_r = %d\n", local_host, r_index, node_r);
             //fflush(stdout);
-            *((msg_key_int *) dbs[node_r].data + dbs[node_r].size / sizeof(msg_key_int)) = m;
-            dbs[node_r].size += sizeof(msg_key_int);
-            assert(dbs[node_r].size <= BLOCK_SIZE);
+            // for all <k, node_s> in table
+            int node_r = r->src;
+            for (node_s = 0; node_s < hosts; node_s++) {
+                if (nodes[node_s]) {
+                    //printf("notify_nodes: Node %d, s_index = %lu, node_s = %d\n", local_host, s_index, node_s);
+                    //fflush(stdout);
+                    // send <k, node_s> to node_r, use tag 2
+                    m.k = k;
+                    m.content = node_s;
+                    if (dbs[node_r].size + sizeof(msg_key_int) > BLOCK_SIZE) {
+                        CL->send_end(dbs[node_r], node_r, tag);
+                        while (!CL->send_begin(&dbs[node_r], node_r, tag));
+                        dbs[node_r].size = 0;
+                    }
+                    //printf("notify_nodes: Node %d, send <key %u, node_s %d> to node_r %d\n", local_host, k, node_s, node_r);
+                    //fflush(stdout);
+                    *((msg_key_int *) dbs[node_r].data + dbs[node_r].size / sizeof(msg_key_int)) = m;
+                    dbs[node_r].size += sizeof(msg_key_int);
+                    assert(dbs[node_r].size <= BLOCK_SIZE);
+                }
+            }
         }
     }
+
+
 
     // Send last partially filled data blocks to all nodes
     for (dest = 0; dest < hosts; dest++) {
