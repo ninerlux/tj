@@ -49,7 +49,7 @@ void HashTable<Record>::printAll(int local_host) {
 	//fflush(stdout);
 	for (size_t i = 0; i < size; i++) {
 		if (table[i] != NULL) {
-			printf("HashTable - printAll: Node %d, index %lu: key %u, src %u, type %c\n", local_host, i, table[i]->k, table[i]->src, table[i]->table_type);
+			printf("HashTable - printAll: Node %d, index %lu: key %u, src %u, type %c visited %d\n", local_host, i, table[i]->k, table[i]->src, table[i]->table_type, table[i]->visited);
 			fflush(stdout);
 		} 
 	}

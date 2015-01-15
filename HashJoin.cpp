@@ -22,7 +22,9 @@ pthread_mutex_t nrc_mutex;
 
 size_t added_tuples = 0;
 size_t queried_num = 0;
+
 size_t hashjoin_num = 0;
+pthread_mutex_t hj_num_mutex;
 
 int get_nrc() {
     pthread_mutex_lock(&nrc_mutex);
@@ -35,6 +37,21 @@ void add_nrc(int n = 1) {
     pthread_mutex_lock(&nrc_mutex);
     nodes_recv_complete += n;
     pthread_mutex_unlock(&nrc_mutex);
+}
+
+size_t get_hj_num() {
+	pthread_mutex_lock(&hj_num_mutex);
+	size_t r = hashjoin_num;
+	pthread_mutex_unlock(&hj_num_mutex);
+	return r;
+}
+
+size_t add_hj_num(int n = 1) {
+	pthread_mutex_lock(&hj_num_mutex);
+	hashjoin_num += n;
+	size_t r = hashjoin_num;
+	pthread_mutex_unlock(&hj_num_mutex);
+	return r;
 }
 
 template <typename Table, typename Record>
@@ -73,7 +90,7 @@ static void *scan_and_send(void *param) {
         // hash() is the hash function of hash table. It is like "key % p", where p is a very large prime
 		//printf("Scan - Node %d #%d key = %u tag = %d\n", local_host, i, T->records[i].k, tag);
 		//fflush(stdout);
-        dest = h_table->hash32(T->records[i].k) % hosts;
+        dest = T->records[i].k % hosts;
         if (dbs[dest].size + sizeof(Record) > BLOCK_SIZE) {
             CL->send_end(dbs[dest], dest, tag);
             //printf("Scan - Node %d send data block to node %d with %lu records\n", local_host, dest, dbs[dest].size / sizeof(Record));
@@ -205,9 +222,10 @@ static void *receive_and_probe(void *param) {
                         //}
                         //assert(valid == true);
                         //Output joined tuples
-                        //printf("Join Result: Node %d #%d, src %d, join_key_r %u join_key_s %u payload_r %u, payload_s %u %s\n", local_host, ++hashjoin_num, src, r->k, s->k, r->p, s->p, valid ? "correct" : "incorrect");
+                        //printf("Join Result: Node %d #%d, src %d, join_key_r %u join_key_s %u payload_r %u, payload_s %u %s\n", local_host, add_hj_num(), src, r->k, s->k, r->p, s->p, valid ? "correct" : "incorrect");
                         //fflush(stdout);
-                        hashjoin_num++;
+                        //add_hj_num();
+						hashjoin_num++;
                     }
                 }
             } else {
@@ -231,13 +249,14 @@ int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
     worker_threads = new pthread_t[16];
 
     //create HashTable h_table
-	size_t h_table_size = R->num_records / 0.1;
+	size_t h_table_size = R->num_records / 0.5;
 	printf("hash table size = %lu\n", h_table_size);
 	fflush(stdout);
 
     HashTable<record_r> *h_table = new HashTable<record_r>(h_table_size);
 
 	pthread_mutex_init(&nrc_mutex, NULL);
+	pthread_mutex_init(&hj_num_mutex, NULL);
 
     int times, timed;
 

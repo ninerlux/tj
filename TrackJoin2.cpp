@@ -13,14 +13,16 @@
 #define S_SCAN_THREADS 4
 #define RECV_R_THREADS 4
 #define RECV_S_THREADS 4
-#define T_NOTI_THREADS 6
-#define R_SEND_THREADS 5
-#define S_COMT_THREADS 5
+#define T_NOTI_THREADS 1
+#define R_SEND_THREADS 7
+#define S_COMT_THREADS 8
 
 int *recv_complete_tj2 = new int[4];
 pthread_mutex_t *rc_mutex_tj2 = new pthread_mutex_t[4];
 
 size_t trackjoin2_num = 0;
+pthread_mutex_t tj_num_mutex;
+
 size_t added_r_num = 0;
 size_t added_s_num = 0;
 
@@ -35,6 +37,21 @@ void add_rc_tj2(int index, int n = 1) {
     pthread_mutex_lock(&rc_mutex_tj2[index]);
     recv_complete_tj2[index] += n;
     pthread_mutex_unlock(&rc_mutex_tj2[index]);
+}
+
+size_t get_tj_num() {
+	pthread_mutex_lock(&tj_num_mutex);
+	size_t r = trackjoin2_num;
+	pthread_mutex_unlock(&tj_num_mutex);
+	return r;
+}
+
+size_t add_tj_num(int n = 1) {
+	pthread_mutex_lock(&tj_num_mutex);
+	trackjoin2_num += n;
+	size_t r = trackjoin2_num;
+	pthread_mutex_unlock(&tj_num_mutex);
+	return r;
 }
 
 template<typename Table, typename Record>
@@ -82,7 +99,7 @@ static void *scan_and_send(void *param) {
         //fflush(stdout);
         // check if key is duplicate
         if (h_table->find(T->records[i].k, &r, h_table->getSize() + 1, 10) == h_table->getSize()) {
-            dest = h_table->hash32(T->records[i].k) % hosts;
+            dest = (T->records[i].k) % hosts;
             //printf("Scan - Node %d, dest = %d, i = %d\n", local_host, dest, i);
             //fflush(stdout);
             if (dbs[dest].size + sizeof(join_key_t) > BLOCK_SIZE) {
@@ -111,9 +128,9 @@ static void *scan_and_send(void *param) {
 		}
     }
 
-	printf("Node %d added_r_num = %lu\n", local_host, added_r_num);
-	printf("Node %d added_s_num = %lu\n", local_host, added_s_num);
-	fflush(stdout);
+	//printf("Node %d added_r_num = %lu\n", local_host, added_r_num);
+	//printf("Node %d added_s_num = %lu\n", local_host, added_s_num);
+	//fflush(stdout);
 
     // Send last partially filled data blocks to to all nodes
     for (dest = 0; dest < hosts; dest++) {
@@ -166,9 +183,6 @@ static void *recv_keys(void *param) {
                         printf("recv_keys: Node %d, hash table full!!!, size = %lu\n", local_host, h_table->getSize());
                         fflush(stdout);
                     }
-                    //printf("recv_keys: Node %d, res = %lu, table_r_k %u\n", local_host, res, h_table->table[res]->k);
-                    //fflush(stdout);
-
                     bytes_copied += sizeof(join_key_t);
                 }
             } else {
@@ -205,38 +219,49 @@ static void *notify_nodes(void *param) {
         dbs[dest].size = 0;
     }
 
-//    size_t table_size = h_table->getSize();
-//    //size_t k_index = -1;
-//	size_t r_index = -1;
-//    join_key_t k;
-//    record_key *rec = NULL;
-//    msg_key_int m;
-//
-//    // for all <k, node_r> in hash table
-//    while ((r_index = h_table->markNextKey(r_index + 1, &rec, 'R', true)) != table_size) {
-//        //printf("notify_nodes: Node %d, key_r %u\n", local_host, rec->k);
-//        int node_r = rec->src;
-//        k = rec->k;
-//        size_t s_index = -1;
-//        // find all <k, node_s> in table
-//        // Do not mark keys sent from S as visited. So we pass "false" to its parameter
-//        while ((s_index = h_table->markVisited(k, s_index + 1, 'S', &rec, false)) != table_size) {
-//            int node_s = rec->src;
-//            // send <k, node_s> to node_r, use tag 2
-//            m.k = k;
-//            m.content = node_s;
-//            if (dbs[node_r].size + sizeof(msg_key_int) > BLOCK_SIZE) {
-//                CL->send_end(dbs[node_r], node_r, tag);
-//                while (!CL->send_begin(&dbs[node_r], node_r, tag));
-//                dbs[node_r].size = 0;
-//            }
-//            //printf("notify_nodes: Node %d, send <key %u, node_s %d> to node_r %d\n", local_host, k, node_s, node_r);
-//            //fflush(stdout);
-//            *((msg_key_int *) dbs[node_r].data + dbs[node_r].size / sizeof(msg_key_int)) = m;
-//            dbs[node_r].size += sizeof(msg_key_int);
-//            assert(dbs[node_r].size <= BLOCK_SIZE);
-//        }
-//    }
+/*
+    size_t table_size = h_table->getSize();
+    //size_t k_index = -1;
+	size_t r_index = -1;
+	//printf("r_index = %lu, r_index + 1 = %lu\n", r_index, r_index + 1); 
+    join_key_t k;
+    record_key *rec = NULL;
+    msg_key_int m;
+	size_t r_num = 0;
+
+    // for all <k, node_r> in hash table
+    while ((r_index = h_table->markNextKey(r_index + 1, &rec, 'R', true)) != table_size) {
+        //printf("notify_nodes: Node %d, key_r %u\n", local_host, rec->k);
+		r_num++;
+        int node_r = rec->src;
+        k = rec->k;
+        size_t s_index = -1;
+		bool found_key = false;
+        // find all <k, node_s> in table
+        // Do not mark keys sent from S as visited. So we pass "false" to its parameter
+    	//printf("r_index = %lu, k = %lu, key = %lu, table_size = %lu\n", r_index, k, h_table->table[r_index]->k, table_size); 
+		//fflush(stdout);
+        while ((s_index = h_table->markVisited(k, s_index + 1, 'S', &rec, false, found_key)) != table_size) {
+            int node_s = rec->src;
+            printf("notify_nodes: Node %d, send <key %u, node_s %d> to node_r %d\n", local_host, k, node_s, node_r);
+            fflush(stdout);
+            // send <k, node_s> to node_r, use tag 2
+            m.k = k;
+            m.content = node_s;
+            if (dbs[node_r].size + sizeof(msg_key_int) > BLOCK_SIZE) {
+                CL->send_end(dbs[node_r], node_r, tag);
+                while (!CL->send_begin(&dbs[node_r], node_r, tag));
+                dbs[node_r].size = 0;
+            }
+            *((msg_key_int *) dbs[node_r].data + dbs[node_r].size / sizeof(msg_key_int)) = m;
+            dbs[node_r].size += sizeof(msg_key_int);
+            assert(dbs[node_r].size <= BLOCK_SIZE);
+        }
+    }
+
+	printf("Node %d, r_num = %lu\n", local_host, r_num);
+
+*/
 
     size_t table_size = h_table->getSize();
     size_t k_index = -1;
@@ -290,8 +315,6 @@ static void *notify_nodes(void *param) {
             }
         }
     }
-
-
 
     // Send last partially filled data blocks to all nodes
     for (dest = 0; dest < hosts; dest++) {
@@ -422,9 +445,9 @@ static void *join_tuple(void *param) {
                     while ((pos = h_table->find(r->k, &s, pos + 1, 10)) != h_table->getSize()) {
                         bool valid = true;
                         //printf("Join Result: Node %d #%lu, src %d, join_key %u payload_r %u, payload_s %u %s\n", local_host,
-                        //		trackjoin2_num, src, s->k, r->p, s->p, valid ? "correct" : "incorrect");
+                        //		add_tj_num(), src, s->k, r->p, s->p, valid ? "correct" : "incorrect");
                         //fflush(stdout);
-                        trackjoin2_num++;
+                        add_tj_num();
                     }
                     bytes_copied += sizeof(record_r);
                 }
@@ -494,6 +517,7 @@ int TrackJoin2::run(ConnectionLayer *CL, struct table_r *R, struct table_s *S) {
         pthread_mutex_init(&rc_mutex_tj2[i], NULL);
         recv_complete_tj2[i] = 0;
     }
+	pthread_mutex_init(&tj_num_mutex, NULL);
 
     // start process receiving keys sent from R
     for (; t < R_SCAN_THREADS + S_SCAN_THREADS + RECV_R_THREADS; t++) {
