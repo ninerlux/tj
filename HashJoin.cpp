@@ -11,11 +11,11 @@
 #include "usertype.h"
 #include "HashTable.h"
 
-#define CPU_CORES 16
-#define R_SEND_THREADS 4
-#define R_RECV_THREADS 12
-#define S_SEND_THREADS 4
-#define S_RECV_THREADS 12
+#define CPU_CORES 32
+#define R_SEND_THREADS 8
+#define R_RECV_THREADS 24
+#define S_SEND_THREADS 8
+#define S_RECV_THREADS 24
 
 int nodes_recv_complete;
 pthread_mutex_t nrc_mutex;
@@ -246,7 +246,7 @@ int HashJoin::get_tags() {
 int HashJoin::run(ConnectionLayer *CL, table_r *R, table_s *S) {
     int t;
 	int local_host = CL->get_local_host();
-    worker_threads = new pthread_t[16];
+    worker_threads = new pthread_t[CPU_CORES];
 
     //create HashTable h_table
 	size_t h_table_size = R->num_records / 0.5;

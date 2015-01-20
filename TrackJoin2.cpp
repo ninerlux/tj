@@ -8,14 +8,14 @@
 #include <assert.h>
 #include <unistd.h>
 
-#define CPU_CORES 16
-#define R_SCAN_THREADS 4
-#define S_SCAN_THREADS 4
-#define RECV_R_THREADS 4
-#define RECV_S_THREADS 4
-#define T_NOTI_THREADS 1
-#define R_SEND_THREADS 7
-#define S_COMT_THREADS 8
+#define CPU_CORES 32
+#define R_SCAN_THREADS 8
+#define S_SCAN_THREADS 8
+#define RECV_R_THREADS 8
+#define RECV_S_THREADS 8
+#define T_NOTI_THREADS 12
+#define R_SEND_THREADS 10
+#define S_COMT_THREADS 10
 
 int *recv_complete_tj2 = new int[4];
 pthread_mutex_t *rc_mutex_tj2 = new pthread_mutex_t[4];
@@ -25,6 +25,8 @@ pthread_mutex_t tj_num_mutex;
 
 size_t added_r_num = 0;
 size_t added_s_num = 0;
+
+size_t recv_tuples = 0;
 
 int get_rc_tj2(int index) {
     pthread_mutex_lock(&rc_mutex_tj2[index]);
@@ -285,6 +287,13 @@ static void *notify_nodes(void *param) {
             node_s = r->src;
             assert(node_s >= 0);
             nodes[node_s] = true;
+			int true_num = 0;
+			for (int i = 0; i < hosts; i++) {
+				true_num += nodes[i];
+			}
+			if (true_num == hosts) {
+				break;
+			}
         }
 
         size_t r_index = k_index - 1;
@@ -439,8 +448,8 @@ static void *join_tuple(void *param) {
                     r = new record_r();
                     assert(bytes_copied + sizeof(record_r) <= db_recv.size);
                     *r = *((record_r *) db_recv.data + bytes_copied / sizeof(record_r));
-                    size_t pos = h_table->getSize();
-
+                    recv_tuples++;
+					size_t pos = h_table->getSize();
                     //printf("Node %d, here 2\n", local_host);
                     while ((pos = h_table->find(r->k, &s, pos + 1, 10)) != h_table->getSize()) {
                         bool valid = true;
@@ -466,7 +475,7 @@ static void *join_tuple(void *param) {
 
 int TrackJoin2::run(ConnectionLayer *CL, struct table_r *R, struct table_s *S) {
     int t;
-    worker_threads = new pthread_t[16];
+    worker_threads = new pthread_t[CPU_CORES];
     int local_host = CL->get_local_host();
 
     size_t h_table_r_size = R->num_records / 0.5;
@@ -578,14 +587,13 @@ int TrackJoin2::run(ConnectionLayer *CL, struct table_r *R, struct table_s *S) {
         void *retval;
         pthread_join(worker_threads[t], &retval);
     }
+	
+	int time_recv = time(NULL);
+	printf("Node %d receive keys taken: %ds\n", local_host, time_recv - times);
 
     printf("Node %d, h_table_key size = %lu\n", local_host, h_table_key->getSize());
     fflush(stdout);
     //h_table_key->printAll(local_host);
-
-//    for (int i = 0; i < 2; i++) {
-//        nodes_recv_complete[i] = 0;
-//    }
 
     for (t = 0; t < T_NOTI_THREADS; t++) {
         // notify R processes
@@ -629,7 +637,10 @@ int TrackJoin2::run(ConnectionLayer *CL, struct table_r *R, struct table_s *S) {
         fflush(stdout);
     }
 
-    // barrier
+ 	int time_noti = time(NULL);
+	printf("Node %d notify nodes taken: %ds\n", local_host, time_noti - time_recv);
+
+   // barrier
     for (; t < T_NOTI_THREADS + R_SEND_THREADS; t++) {
         void *retval;
         pthread_join(worker_threads[t], &retval);
@@ -642,14 +653,21 @@ int TrackJoin2::run(ConnectionLayer *CL, struct table_r *R, struct table_s *S) {
         printf("send_tuple: Node %d send end flag to dest %d with tag 3\n", local_host, dest);
         fflush(stdout);
     }
+	
+	int time_send = time(NULL);
+	printf("Node %d send tuples taken: %ds\n", local_host, time_send - time_recv);
 
     // barrier for join_tuple threads
     for (; t < CPU_CORES; t++) {
         void *retval;
         pthread_join(worker_threads[t], &retval);
     }
+	
+	int time_join = time(NULL);
+	printf("Node %d join tuples taken: %ds\n", local_host, time_join - time_recv);
 
-    printf("Node %d JOIN NUM = %lu\n", local_host, trackjoin2_num);
+
+    printf("Node %d JOIN NUM = %lu, recv_tuples = %lu\n", local_host, trackjoin2_num, recv_tuples);
     fflush(stdout);
 
     timed = time(NULL);
